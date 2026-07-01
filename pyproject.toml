@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "MPhSweepKit"
+version = "0.1.0"
+authors = [
+    { name = "Till Piepenbrock" },
+]
+description = "Python-based tooling for large-scale parameter sweeps of magnetic components in power electronics"
+readme = "README.md"
+requires-python = ">=3.13"
+
+[project.urls]
+Homepage = "https://github.com/upb-lea/MPhSweepKit"
+
+[tool.setuptools]
+include-package-data = true

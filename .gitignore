@@ -1,0 +1,15 @@
+# Directories
+.venv/
+.idea/
+__pycache__/
+*.egg-info/
+.vscode/
+
+# Files
+mphsweepkit/examples/study__ferrite_cross_sections/B_plot.txt
+mphsweepkit/examples/study__ferrite_cross_sections/core_cross_section_solved.mph
+
+# General File Types
+.env
+.env.*
+*.mph.lock
