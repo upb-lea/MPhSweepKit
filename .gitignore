@@ -4,6 +4,8 @@
 __pycache__/
 *.egg-info/
 .vscode/
+batch_data/
+server_dir/
 
 # Files
 mphsweepkit/examples/study__ferrite_cross_sections/B_plot.txt
