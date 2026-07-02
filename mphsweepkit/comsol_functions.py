@@ -5,10 +5,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import mph
 
-def get_parameters(model):
+
+def get_parameters(model: mph.Model) -> dict:
     """
     Get all global parameters and their values.
-    
+
     :param model: The COMSOL model object.
     :return: A dictionary containing parameter names and their corresponding values."""
     parameters = {}
@@ -17,21 +18,22 @@ def get_parameters(model):
         parameters[name] = value
     return parameters
 
-def print_parameters(parameters):
+
+def print_parameters(parameters: dict):
     """
     Print the parameters in a readable format.
-    
+
     :param parameters: A dictionary containing parameter names and their corresponding values."""
     for name, value in parameters.items():
         print(f"{name}: {value}")
 
-def get_sweep_data(sweep_params):
+
+def get_sweep_data(sweep_params: dict) -> dict:
     """
     Explore the sweep data and return relevant information.
-    
-    Parameters:
-    sweep_params (dict): Dictionary containing sweep parameters, including
-        ``pname``, ``punit``, ``plistarr``, and ``sweeptype``.
+
+    :param sweep_params: Dictionary containing sweep parameters
+    :return: A dictionary containing the sweep data.
     """
     return {
         "pname": sweep_params["pname"],
@@ -40,6 +42,7 @@ def get_sweep_data(sweep_params):
         "sweeptype": sweep_params["sweeptype"],
         "plistarr_shape": sweep_params["plistarr"].shape,
     }
+
 
 def set_parametric_sweep(
     sweep_obj: mph.Node,
@@ -53,35 +56,35 @@ def set_parametric_sweep(
 
     IMPORTANT: Use all floats for the parameter values to avoid issues with COMSOL's handling of data types.
 
-    Parameters:
-    sweep_obj: The sweep object to set parameters for.
-    param_names: List of parameter names.
-    param_units: List of parameter units corresponding to the parameter names.
-    param_values: List of parameter values corresponding to the parameter names.
-    sweep_type: Type of sweep ('sparse' or 'filled').
+    :param sweep_obj: The sweep object to set parameters for.
+    :param param_names: List of parameter names.
+    :param param_units: List of parameter units corresponding to the parameter names.
+    :param param_values: List of parameter values corresponding to the parameter names.
+    :param sweep_type: Type of sweep ('sparse' or 'filled').
     """
     sweep_obj.property("pname", param_names)
     sweep_obj.property("punit", param_units)
     sweep_obj.property("plistarr", param_values)
     sweep_obj.property("sweeptype", sweep_type)
 
-def get_descriptions(model, parameter_names):
+
+def get_descriptions(model: mph.Model, parameter_names: list) -> dict:
     """
     Get the COMSOL descriptions for a list of parameter names.
 
-    Parameters:
-    model: COMSOL model used to resolve the parameter descriptions.
-    parameter_names (list[str]): Parameter names to describe.
+    :param model: COMSOL model used to resolve the parameter descriptions.
+    :param parameter_names: List of parameter names to describe.
+    :return: A dictionary mapping parameter names to their descriptions.
     """
     return {name: model.description(name) for name in parameter_names}
 
 
-def get_frequency_data(frequency_properties):
+def get_frequency_data(frequency_properties: dict) -> dict:
     """
     Return the frequencies defined in a frequency-domain sweep block.
 
-    Parameters:
-    frequency_properties (dict): Dictionary containing frequency sweep properties.
+    :param frequency_properties: Dictionary containing frequency sweep properties.
+    :return: A dictionary containing the frequency data.
     """
     return {
         "frequencies": np.ravel(frequency_properties["plist"]).tolist(),
@@ -89,20 +92,19 @@ def get_frequency_data(frequency_properties):
     }
 
 
-def get_cascaded_dataset(geometry_sweep_data, excitation_sweep_data, frequency_sweep_data):
+def get_cascaded_dataset(
+    geometry_sweep_data: dict, excitation_sweep_data: dict, frequency_sweep_data: dict
+) -> pd.DataFrame:
     """
     Build the full cascaded dataset for geometry -> excitation -> frequency.
 
     Sparse sweeps are expanded case-by-case, filled sweeps are expanded as a
     cartesian product, and the resulting records are combined in cascade order.
 
-    Parameters:
-    geometry_sweep_data (dict): Geometry sweep data returned by get_sweep_data.
-    excitation_sweep_data (dict): Excitation sweep data returned by get_sweep_data.
-    frequency_sweep_data (dict): Frequency data returned by get_frequency_data.
-
-    Returns:
-    pd.DataFrame: DataFrame containing all parameter combinations.
+    :param geometry_sweep_data: Geometry sweep data returned by get_sweep_data.
+    :param excitation_sweep_data: Excitation sweep data returned by get_sweep_data.
+    :param frequency_sweep_data: Frequency data returned by get_frequency_data.
+    :return: DataFrame containing all parameter combinations.
     """
 
     def _expand_sweep(sweep_data):
@@ -111,10 +113,15 @@ def get_cascaded_dataset(geometry_sweep_data, excitation_sweep_data, frequency_s
         sweep_type = sweep_data["sweeptype"]
 
         if sweep_type == "sparse":
-            return [dict(zip(parameter_names, values)) for values in zip(*parameter_values)]
+            return [
+                dict(zip(parameter_names, values)) for values in zip(*parameter_values)
+            ]
 
         value_lists = [np.ravel(row).tolist() for row in parameter_values]
-        return [dict(zip(parameter_names, combination)) for combination in itertools.product(*value_lists)]
+        return [
+            dict(zip(parameter_names, combination))
+            for combination in itertools.product(*value_lists)
+        ]
 
     geometry_records = _expand_sweep(geometry_sweep_data)
     excitation_records = _expand_sweep(excitation_sweep_data)
@@ -133,6 +140,9 @@ def get_cascaded_dataset(geometry_sweep_data, excitation_sweep_data, frequency_s
 def read_comsol_txt_to_df(filepath: str) -> pd.DataFrame:
     """
     Read a COMSOL-style .txt export into a pandas DataFrame.
+
+    :param filepath: Path to the COMSOL .txt file.
+    :return: DataFrame containing the data from the file.
     """
     header_cols = None
     with open(filepath, "r", encoding="utf-8") as f:
@@ -142,7 +152,9 @@ def read_comsol_txt_to_df(filepath: str) -> pd.DataFrame:
                 content = line.lstrip("%").strip()
                 if content.startswith("x"):
                     # split on 2+ spaces so multi-word final column name stays intact
-                    header_cols = pd.Series(content).str.split(r"\s{2,}", regex=True).iloc[0]
+                    header_cols = (
+                        pd.Series(content).str.split(r"\s{2,}", regex=True).iloc[0]
+                    )
                     break
 
     if header_cols is None:
@@ -150,37 +162,40 @@ def read_comsol_txt_to_df(filepath: str) -> pd.DataFrame:
 
     df = pd.read_csv(
         filepath,
-        sep=r"\s+",      # <- modern replacement for delim_whitespace=True
+        sep=r"\s+",  # <- modern replacement for delim_whitespace=True
         comment="%",
         header=None,
         names=header_cols,
-        engine="python"  # robust with regex separators
+        engine="python",  # robust with regex separators
     )
 
     return df
 
+
 def plot_comsol_df(
-    df,
-    x_col="x",
-    y_col="y",
-    value_col="Magnetic flux density norm",
-    kind="scatter",          # "scatter" or "tricontourf"
-    cmap="viridis",
-    point_size=8,
-    levels=30,
-    figsize=(7, 5)
+    df: pd.DataFrame,
+    x_col: str = "x",
+    y_col: str = "y",
+    value_col: str = "Magnetic flux density norm",
+    kind: str = "scatter",  # "scatter" or "tricontourf"
+    cmap: str = "viridis",
+    point_size: int = 8,
+    levels: int = 30,
+    figsize: tuple = (7, 5),
 ):
     """
     Plot COMSOL point data from a DataFrame.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame containing x, y, and value columns.
-    x_col, y_col, value_col : str
-        Column names to use for plotting.
-    kind : str
-        "scatter" for colored points, "tricontourf" for filled contour over triangulation.
+    :param df: DataFrame containing x, y, and value columns.
+    :param x_col: Column name for x-axis values.
+    :param y_col: Column name for y-axis values.
+    :param value_col: Column name for color values.
+    :param kind: Type of plot ('scatter' or 'tricontourf').
+    :param cmap: Colormap for the plot.
+    :param point_size: Size of points in scatter plot.
+    :param levels: Number of contour levels.
+    :param figsize: Figure size for the plot.
+    :param kind: Type of plot ('scatter' or 'tricontourf').
     """
     fig, ax = plt.subplots(figsize=figsize)
 
@@ -221,5 +236,5 @@ post_processing_exprs = {
         "expression": "intopFlux(mf.Qrh)/A_c",
         "unit": "W /m^3",
         "label": r"$p_\mathrm{el}$",
-    }
+    },
 }
