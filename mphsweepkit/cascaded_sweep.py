@@ -40,6 +40,11 @@ class CascadedSweep:
             list_of_sweep_names=self.sweep_names,
         )
 
+    # def set_sweep_data(self, sweep_name: str, data: pd.DataFrame):
+    #     """Set the data for a specific sweep."""
+
+
+    #     self.load_data_from_model()
 
     def simulate(self, batch_dir: str = "batch_data"):
         """Run the cascaded sweep simulation."""
@@ -52,4 +57,3 @@ class CascadedSweep:
         except Exception:
             pass
         self.model.solve(self.study_name)
-

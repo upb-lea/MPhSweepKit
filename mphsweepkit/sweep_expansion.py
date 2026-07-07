@@ -7,9 +7,6 @@ from mphsweepkit.sweeps import get_parametric_sweep_data, get_material_sweep_dat
 ALLOWED_SWEEP_TYPES = {"BatchSweep", "MaterialSweep", "Parametric", "Frequency"}
 
 
-# ============================================================
-# Public API
-# ============================================================
 def get_cascaded_dataset(
     list_of_sweep_data: list[dict],
     list_of_sweep_types: list[str | None],
@@ -59,7 +56,7 @@ def get_cascaded_dataset(
 
 
 # ============================================================
-# Internal helpers
+# Helpers
 # ============================================================
 def _validate_inputs(
     list_of_sweep_data: list[dict],

@@ -16,6 +16,9 @@ def get_parametric_sweep_data(sweep_properties: dict[str, Any]) -> dict[str, Any
     - punit
     - plistarr
     - sweeptype
+
+    :param sweep_properties: Dictionary of properties from a COMSOL parametric sweep node.
+    :return: Dictionary containing the extracted sweep data.
     """
     return {
         "pname": sweep_properties["pname"],
@@ -33,8 +36,9 @@ def get_material_sweep_data(sweep_properties: dict[str, Any]) -> dict[str, Any]:
     - pname
     - plistarr
     - sweeptype
-    Optional:
-    - punit
+
+    :param sweep_properties: Dictionary of properties from a COMSOL material sweep node.
+    :return: Dictionary containing the extracted sweep data.
     """
     return {
         "pname": sweep_properties["pname"],
@@ -50,8 +54,10 @@ def get_frequency_sweep_data(sweep_properties: dict[str, Any]) -> dict[str, Any]
 
     Expected COMSOL keys:
     - plist
-    Optional:
     - punit
+
+    :param sweep_properties: Dictionary of properties from a COMSOL frequency sweep node.
+    :return: Dictionary containing the extracted sweep data.
     """
     return {
         "plist": sweep_properties["plist"],
@@ -91,8 +97,7 @@ def set_material_sweep(
     sweep_node: mph.Node,
     material_names: list[str],
     material_values: NDArray[np.float64],
-    sweep_type: str = "sparse",
-    material_units: list[str] | None = None,
+    sweep_type: str = "sparse"
 ) -> None:
     """
     Set a COMSOL material sweep.
@@ -101,14 +106,8 @@ def set_material_sweep(
     :param material_names: Material parameter names.
     :param material_values: 2D values array aligned with material_names.
     :param sweep_type: COMSOL sweep type, usually 'sparse' or 'filled'.
-    :param material_units: Optional units aligned with material_names.
     """
-    if material_units is not None and len(material_units) != len(material_names):
-        raise ValueError("material_units must have the same length as material_names.")
-
     sweep_node.property("pname", material_names)
-    if material_units is not None:
-        sweep_node.property("punit", material_units)
     sweep_node.property("plistarr", np.asarray(material_values, dtype=float))
     sweep_node.property("sweeptype", sweep_type)
 
@@ -127,3 +126,4 @@ def set_frequency_sweep(
     """
     sweep_node.property("plist", np.asarray(frequency_values, dtype=float))
     sweep_node.property("punit", frequency_unit)
+    
