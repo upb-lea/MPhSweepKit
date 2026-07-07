@@ -1,4 +1,3 @@
-from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 import pandas as pd
@@ -46,6 +45,37 @@ def set_parametric_sweep(
     sweep_obj.property("sweeptype", sweep_type)
 
 
+def get_material_data(sweep_materials: dict) -> dict:
+    """
+    Return the material properties defined in a material sweep block.
+
+    :param sweep_materials: Dictionary containing material sweep properties.
+    :return: A dictionary containing the material data.
+    """
+    return {
+        "pname": sweep_materials["pname"],
+        "plistarr": sweep_materials["plistarr"],
+        "sweeptype": sweep_materials["sweeptype"]
+    }
+
+def set_material_sweep(
+    sweep_obj: mph.Node,
+    material_names: list,
+    material_list: NDArray[np.float64],
+    sweep_type: str = "sparse"):
+    """
+    Set the material names and sweep type for a given sweep object.
+
+    :param sweep_obj: The sweep object to set parameters for.
+    :param material_names: List of material names.
+    :param material_list: List of material values.
+    :param sweep_type: Type of sweep ('sparse' or 'filled').
+    """
+    sweep_obj.property("pname", material_names)
+    sweep_obj.property("plistarr", material_list)
+    sweep_obj.property("sweeptype", sweep_type)
+
+
 def get_frequency_data(frequency_properties: dict) -> dict:
     """
     Return the frequencies defined in a frequency-domain sweep block.
@@ -58,17 +88,33 @@ def get_frequency_data(frequency_properties: dict) -> dict:
         "unit": frequency_properties["punit"],
     }
 
+def set_frequency_sweep(
+    sweep_obj: mph.Node,
+    frequency_values: NDArray[np.float64],
+    frequency_unit: str = "Hz"
+):
+    """
+    Set the frequency values and unit for a given frequency sweep object.
+
+    :param sweep_obj: The sweep object to set parameters for.
+    :param frequency_values: List of frequency values.
+    :param frequency_unit: Unit of the frequency values (default is "Hz").
+    """
+    sweep_obj.property("plist", frequency_values)
+    sweep_obj.property("punit", frequency_unit)
+
 
 def get_cascaded_dataset(
-    geometry_sweep_data: dict, excitation_sweep_data: dict, frequency_sweep_data: dict
+    geometry_sweep_data: dict, material_sweep_data: dict, excitation_sweep_data: dict, frequency_sweep_data: dict
 ) -> pd.DataFrame:
     """
-    Build the full cascaded dataset for geometry -> excitation -> frequency.
+    Build the full cascaded dataset for geometry -> material -> excitation -> frequency.
 
     Sparse sweeps are expanded case-by-case, filled sweeps are expanded as a
     cartesian product, and the resulting records are combined in cascade order.
 
     :param geometry_sweep_data: Geometry sweep data returned by get_sweep_data.
+    :param material_sweep_data: Material sweep data returned by get_sweep_data.
     :param excitation_sweep_data: Excitation sweep data returned by get_sweep_data.
     :param frequency_sweep_data: Frequency data returned by get_frequency_data.
     :return: DataFrame containing all parameter combinations.
@@ -91,53 +137,16 @@ def get_cascaded_dataset(
         ]
 
     geometry_records = _expand_sweep(geometry_sweep_data)
+    material_records = _expand_sweep(material_sweep_data)  # a material sweep can be treated as a parameter sweep
     excitation_records = _expand_sweep(excitation_sweep_data)
 
     frequency_values = np.ravel(frequency_sweep_data["frequencies"])
     records = [
-        {**geometry_record, **excitation_record, "freq": frequency_value}
+        {**geometry_record, **material_record, **excitation_record, "freq": frequency_value}
         for geometry_record in geometry_records
+        for material_record in material_records
         for excitation_record in excitation_records
         for frequency_value in frequency_values
     ]
 
     return pd.DataFrame(records)
-
-
-def set_directory(directory_name: str):
-    """
-    Set directory for the geometric sweep to the absolute path of the specified directory.
-
-    :param directory_name: Name of the directory to set.
-    """
-    if not Path(directory_name).exists():
-        Path(directory_name).mkdir()
-        print(f"Directory '{directory_name}' created.")
-    else:
-        print(f"Directory '{directory_name}' already exists. Using existing directory.")
-
-
-def set_batch_directory(parametric_sweep: mph.Node, directory_name: str = "batch_data"):
-    """
-    Set batch directory for the geometric sweep to the absolute path of the "server_dir" directory
-
-    :param parametric_sweep: The parametric sweep object to set the batch directory for.
-    :param directory_name: Name of the batch directory to set.
-    """
-    set_directory(directory_name)
-    absolute_path = Path(directory_name).absolute()
-    parametric_sweep.property("batchdir", str(absolute_path))
-    print(f"Batch directory for the geometric sweep set to: {absolute_path}")
-
-
-def set_server_directory(parametric_sweep: mph.Node, directory_name: str = "server_dir"):
-    """
-    Set server directory for the geometric sweep to the absolute path of the "server_dir" directory
-
-    :param parametric_sweep: The parametric sweep object to set the server directory for.
-    :param directory_name: Name of the server directory to set.
-    """
-    set_directory(directory_name)
-    absolute_server_path = Path(directory_name).absolute()
-    parametric_sweep.property("serverdir", str(absolute_server_path))
-    print(f"Server directory for the geometric sweep set to: {absolute_server_path}")
