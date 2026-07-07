@@ -1,152 +1,129 @@
+from typing import Any
 import numpy as np
 from numpy.typing import NDArray
-import pandas as pd
-import itertools
 import mph
 
 
-def get_sweep_data(sweep_params: dict) -> dict:
+# -------------------------
+# Getter functions
+# -------------------------
+def get_parametric_sweep_data(sweep_properties: dict[str, Any]) -> dict[str, Any]:
     """
-    Explore the sweep data and return relevant information.
+    Extract relevant data from a COMSOL parametric sweep node.
 
-    :param sweep_params: Dictionary containing sweep parameters
-    :return: A dictionary containing the sweep data.
+    Expected COMSOL keys:
+    - pname
+    - punit
+    - plistarr
+    - sweeptype
     """
     return {
-        "pname": sweep_params["pname"],
-        "punit": sweep_params["punit"],
-        "plistarr": sweep_params["plistarr"],
-        "sweeptype": sweep_params["sweeptype"],
-        "plistarr_shape": sweep_params["plistarr"].shape,
+        "pname": sweep_properties["pname"],
+        "punit": sweep_properties.get("punit", None),
+        "plistarr": sweep_properties["plistarr"],
+        "sweeptype": sweep_properties["sweeptype"],
     }
 
 
+def get_material_sweep_data(sweep_properties: dict[str, Any]) -> dict[str, Any]:
+    """
+    Extract relevant data from a COMSOL material sweep node.
+
+    Expected COMSOL keys:
+    - pname
+    - plistarr
+    - sweeptype
+    Optional:
+    - punit
+    """
+    return {
+        "pname": sweep_properties["pname"],
+        "punit": sweep_properties.get("punit", None),
+        "plistarr": sweep_properties["plistarr"],
+        "sweeptype": sweep_properties["sweeptype"],
+    }
+
+
+def get_frequency_sweep_data(sweep_properties: dict[str, Any]) -> dict[str, Any]:
+    """
+    Extract relevant data from a COMSOL frequency sweep node.
+
+    Expected COMSOL keys:
+    - plist
+    Optional:
+    - punit
+    """
+    return {
+        "plist": sweep_properties["plist"],
+        "punit": sweep_properties.get("punit", ""),
+    }
+
+
+# -------------------------
+# Setter functions
+# -------------------------
 def set_parametric_sweep(
-    sweep_obj: mph.Node,
-    param_names: list,
-    param_units: list,
+    sweep_node: mph.Node,
+    param_names: list[str],
+    param_units: list[str],
     param_values: NDArray[np.float64],
     sweep_type: str = "sparse",
-):
+) -> None:
     """
-    Set the parameter names and values for a given sweep object.
+    Set a COMSOL parametric sweep.
 
-    IMPORTANT: Use all floats for the parameter values to avoid issues with COMSOL's handling of data types.
-
-    :param sweep_obj: The sweep object to set parameters for.
-    :param param_names: List of parameter names.
-    :param param_units: List of parameter units corresponding to the parameter names.
-    :param param_values: List of parameter values corresponding to the parameter names.
-    :param sweep_type: Type of sweep ('sparse' or 'filled').
+    :param sweep_node: MPh node for the parametric sweep feature.
+    :param param_names: Parameter names (same order as rows in param_values).
+    :param param_units: Units aligned with param_names.
+    :param param_values: 2D values array aligned with param_names.
+    :param sweep_type: COMSOL sweep type, usually 'sparse' or 'filled'.
     """
-    sweep_obj.property("pname", param_names)
-    sweep_obj.property("punit", param_units)
-    sweep_obj.property("plistarr", param_values)
-    sweep_obj.property("sweeptype", sweep_type)
+    if len(param_names) != len(param_units):
+        raise ValueError("param_names and param_units must have the same length.")
 
+    sweep_node.property("pname", param_names)
+    sweep_node.property("punit", param_units)
+    sweep_node.property("plistarr", np.asarray(param_values, dtype=float))
+    sweep_node.property("sweeptype", sweep_type)
 
-def get_material_data(sweep_materials: dict) -> dict:
-    """
-    Return the material properties defined in a material sweep block.
-
-    :param sweep_materials: Dictionary containing material sweep properties.
-    :return: A dictionary containing the material data.
-    """
-    return {
-        "pname": sweep_materials["pname"],
-        "plistarr": sweep_materials["plistarr"],
-        "sweeptype": sweep_materials["sweeptype"]
-    }
 
 def set_material_sweep(
-    sweep_obj: mph.Node,
-    material_names: list,
-    material_list: NDArray[np.float64],
-    sweep_type: str = "sparse"):
+    sweep_node: mph.Node,
+    material_names: list[str],
+    material_values: NDArray[np.float64],
+    sweep_type: str = "sparse",
+    material_units: list[str] | None = None,
+) -> None:
     """
-    Set the material names and sweep type for a given sweep object.
+    Set a COMSOL material sweep.
 
-    :param sweep_obj: The sweep object to set parameters for.
-    :param material_names: List of material names.
-    :param material_list: List of material values.
-    :param sweep_type: Type of sweep ('sparse' or 'filled').
+    :param sweep_node: MPh node for the material sweep feature.
+    :param material_names: Material parameter names.
+    :param material_values: 2D values array aligned with material_names.
+    :param sweep_type: COMSOL sweep type, usually 'sparse' or 'filled'.
+    :param material_units: Optional units aligned with material_names.
     """
-    sweep_obj.property("pname", material_names)
-    sweep_obj.property("plistarr", material_list)
-    sweep_obj.property("sweeptype", sweep_type)
+    if material_units is not None and len(material_units) != len(material_names):
+        raise ValueError("material_units must have the same length as material_names.")
 
+    sweep_node.property("pname", material_names)
+    if material_units is not None:
+        sweep_node.property("punit", material_units)
+    sweep_node.property("plistarr", np.asarray(material_values, dtype=float))
+    sweep_node.property("sweeptype", sweep_type)
 
-def get_frequency_data(frequency_properties: dict) -> dict:
-    """
-    Return the frequencies defined in a frequency-domain sweep block.
-
-    :param frequency_properties: Dictionary containing frequency sweep properties.
-    :return: A dictionary containing the frequency data.
-    """
-    return {
-        "frequencies": np.ravel(frequency_properties["plist"]).tolist(),
-        "unit": frequency_properties["punit"],
-    }
 
 def set_frequency_sweep(
-    sweep_obj: mph.Node,
+    sweep_node: mph.Node,
     frequency_values: NDArray[np.float64],
-    frequency_unit: str = "Hz"
-):
+    frequency_unit: str = "Hz",
+) -> None:
     """
-    Set the frequency values and unit for a given frequency sweep object.
+    Set a COMSOL frequency sweep.
 
-    :param sweep_obj: The sweep object to set parameters for.
-    :param frequency_values: List of frequency values.
-    :param frequency_unit: Unit of the frequency values (default is "Hz").
+    :param sweep_node: MPh node for the frequency sweep feature.
+    :param frequency_values: 1D/2D frequency values.
+    :param frequency_unit: Frequency unit, e.g. 'Hz', 'kHz', 'MHz'.
     """
-    sweep_obj.property("plist", frequency_values)
-    sweep_obj.property("punit", frequency_unit)
-
-
-def get_cascaded_dataset(
-    geometry_sweep_data: dict, material_sweep_data: dict, excitation_sweep_data: dict, frequency_sweep_data: dict
-) -> pd.DataFrame:
-    """
-    Build the full cascaded dataset for geometry -> material -> excitation -> frequency.
-
-    Sparse sweeps are expanded case-by-case, filled sweeps are expanded as a
-    cartesian product, and the resulting records are combined in cascade order.
-
-    :param geometry_sweep_data: Geometry sweep data returned by get_sweep_data.
-    :param material_sweep_data: Material sweep data returned by get_sweep_data.
-    :param excitation_sweep_data: Excitation sweep data returned by get_sweep_data.
-    :param frequency_sweep_data: Frequency data returned by get_frequency_data.
-    :return: DataFrame containing all parameter combinations.
-    """
-
-    def _expand_sweep(sweep_data):
-        parameter_names = sweep_data["pname"]
-        parameter_values = np.asarray(sweep_data["plistarr"], dtype=object)
-        sweep_type = sweep_data["sweeptype"]
-
-        if sweep_type == "sparse":
-            return [
-                dict(zip(parameter_names, values)) for values in zip(*parameter_values)
-            ]
-
-        value_lists = [np.ravel(row).tolist() for row in parameter_values]
-        return [
-            dict(zip(parameter_names, combination))
-            for combination in itertools.product(*value_lists)
-        ]
-
-    geometry_records = _expand_sweep(geometry_sweep_data)
-    material_records = _expand_sweep(material_sweep_data)  # a material sweep can be treated as a parameter sweep
-    excitation_records = _expand_sweep(excitation_sweep_data)
-
-    frequency_values = np.ravel(frequency_sweep_data["frequencies"])
-    records = [
-        {**geometry_record, **material_record, **excitation_record, "freq": frequency_value}
-        for geometry_record in geometry_records
-        for material_record in material_records
-        for excitation_record in excitation_records
-        for frequency_value in frequency_values
-    ]
-
-    return pd.DataFrame(records)
+    sweep_node.property("plist", np.asarray(frequency_values, dtype=float))
+    sweep_node.property("punit", frequency_unit)

@@ -17,7 +17,7 @@ def set_directory(directory_name: str):
 
 def set_batch_directory(parametric_sweep: mph.Node, directory_name: str = "batch_data"):
     """
-    Set batch directory for the geometric sweep to the absolute path of the "server_dir" directory
+    Set batch directory for the geometric sweep to the absolute path of the "batch_data" directory
 
     :param parametric_sweep: The parametric sweep object to set the batch directory for.
     :param directory_name: Name of the batch directory to set.
@@ -26,16 +26,3 @@ def set_batch_directory(parametric_sweep: mph.Node, directory_name: str = "batch
     absolute_path = Path(directory_name).absolute()
     parametric_sweep.property("batchdir", str(absolute_path))
     print(f"Batch directory for the geometric sweep set to: {absolute_path}")
-
-
-def set_server_directory(parametric_sweep: mph.Node, directory_name: str = "server_dir"):
-    """
-    Set server directory for the geometric sweep to the absolute path of the "server_dir" directory
-
-    :param parametric_sweep: The parametric sweep object to set the server directory for.
-    :param directory_name: Name of the server directory to set.
-    """
-    set_directory(directory_name)
-    absolute_server_path = Path(directory_name).absolute()
-    parametric_sweep.property("serverdir", str(absolute_server_path))
-    print(f"Server directory for the geometric sweep set to: {absolute_server_path}")
