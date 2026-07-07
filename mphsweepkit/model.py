@@ -25,13 +25,26 @@ class CascadedSweepModel:
         self.sweep_nodes = self.study_node.children()
         self.sweep_names = [node.name() for node in self.sweep_nodes]
         self.sweep_types = [node.type() for node in self.sweep_nodes]
+        self.init_message()
 
         # Data containers (filled by load_data_from_model)
         self.data: Optional[pd.DataFrame] = None
         self.data_unit_map: dict[str, str | None] = {}
         self.data_sweep_map: dict[str, str | None] = {}
 
-    def load_data_from_model(self):
+        self.update_data_from_model()
+
+    def init_message(self):
+        """Prints a message about the initialized cascaded sweep model."""
+        print(f"Initialized CascadedSweepModel")
+        print(f"Study name: {self.study_name}")
+        print(f"Sweep Structure:")
+        spaces = "  "
+        for name, sweep_type in zip(self.sweep_names, self.sweep_types):
+            spaces += "  "
+            print(f"{spaces}- {name} ({sweep_type})")
+
+    def update_data_from_model(self):
         """Load sweep data from the COMSOL model and build cascaded dataset."""
         list_of_sweep_data = [node.properties() for node in self.sweep_nodes]
 
@@ -41,6 +54,10 @@ class CascadedSweepModel:
             list_of_sweep_names=self.sweep_names,
         )
 
+        print(f"--------------------------------")
+        print(f"Data updated from MPh-model.")
+        print(f"Data Shape: {self.data.shape}")
+        
     def set_material_sweep(self, 
                            sweep_name: str, 
                            material_names: list[str],
@@ -60,7 +77,7 @@ class CascadedSweepModel:
             sweep_type=sweep_type
         )
 
-        self.load_data_from_model()
+        self.update_data_from_model()
 
     def simulate(self, batch_dir: str = "batch_data"):
         """Run the cascaded sweep simulation."""
