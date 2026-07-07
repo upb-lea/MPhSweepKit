@@ -8,8 +8,7 @@ batch_data/
 server_dir/
 
 # Files
-mphsweepkit/examples/study__ferrite_cross_sections/B_plot.txt
-mphsweepkit/examples/study__ferrite_cross_sections/core_cross_section_solved.mph
+mphsweepkit/examples/studies/ferrite_plate_capacitor
 
 # General File Types
 .env
