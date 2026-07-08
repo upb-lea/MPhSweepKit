@@ -1,14 +1,19 @@
 """Provides the class to perform a cascaded sweep on a COMSOL model accessed via the MPh API."""
 from __future__ import annotations
 
-from typing import Optional
-from xml.parsers.expat import model
+from typing import Optional, TypedDict, NotRequired
 import pandas as pd
 import mph
 
 from mphsweepkit.cascaded_sweep import get_cascaded_dataset
 from mphsweepkit.directories import set_batch_directory
 from mphsweepkit.sweep import set_material_sweep
+
+
+class PostProcessSpec(TypedDict):
+    expression: str
+    unit: NotRequired[str]
+    label: NotRequired[str]
 
 
 class CascadedSweepModel:
@@ -25,49 +30,91 @@ class CascadedSweepModel:
         self.sweep_nodes = self.study_node.children()
         self.sweep_names = [node.name() for node in self.sweep_nodes]
         self.sweep_types = [node.type() for node in self.sweep_nodes]
-        self.init_message()
+        self.print_initialization_summary()
 
-        # Data containers (filled by load_data_from_model)
-        self.data: Optional[pd.DataFrame] = None
-        self.data_unit_map: dict[str, str | None] = {}
-        self.data_sweep_map: dict[str, str | None] = {}
+        # Model Datasets
+        self.model_datasets = self.model.datasets()
+
+        # Input containers and metadata maps
+        self.input_data: Optional[pd.DataFrame] = None
+        self.input_unit_map: dict[str, str | None] = {}
+        self.input_sweep_map: dict[str, str | None] = {}
+
+        # Output containers and metadata maps
+        self.output_data: pd.DataFrame = pd.DataFrame()
+        self.output_unit_map: dict[str, str | None] = {}
+        self.output_label_map: dict[str, str | None] = {}
 
         self.update_data_from_model()
 
-    def init_message(self):
+    @property
+    def combined_data(self) -> pd.DataFrame:
+        """Combined input/output view for convenience."""
+        if self.input_data is None:
+            return pd.DataFrame()
+        return self.input_data.join(self.output_data, how="left")
+
+
+    def print_initialization_summary(self):
         """Prints a message about the initialized cascaded sweep model."""
-        print(f"Initialized CascadedSweepModel")
+        print("Initialized CascadedSweepModel")
         print(f"Study name: {self.study_name}")
-        print(f"Sweep Structure:")
+        print("Sweep Structure:")
         spaces = "  "
         for name, sweep_type in zip(self.sweep_names, self.sweep_types):
             spaces += "  "
             print(f"{spaces}- {name} ({sweep_type})")
 
+    def _reset_outputs_to_inputs_index(self):
+        """Reset output_data so it has exactly the same index as input_data.
+
+        Reason:
+            Post-processing results are assigned row-wise to the sweep parameter rows.
+            Whenever input_data changes (e.g., new sweep settings, different number/order
+            of cases), old output_data may no longer align and could silently attach
+            results to the wrong parameter set. Reinitializing output_data with the
+            current input_data index guarantees safe, deterministic alignment.
+        """
+        if self.input_data is None:
+            self.output_data = pd.DataFrame()
+            self.output_unit_map = {}
+            return
+        self.output_data = pd.DataFrame(index=self.input_data.index)
+        self.output_unit_map = {}
+
     def update_data_from_model(self):
-        """Load sweep data from the COMSOL model and build cascaded dataset."""
+        """Load sweep data from the COMSOL model and build cascaded input dataset."""
         list_of_sweep_data = [node.properties() for node in self.sweep_nodes]
 
-        self.data, self.data_unit_map, self.data_sweep_map = get_cascaded_dataset(
+        input_data, unit_map, sweep_map = get_cascaded_dataset(
             list_of_sweep_data=list_of_sweep_data,
             list_of_sweep_types=self.sweep_types,
             list_of_sweep_names=self.sweep_names,
         )
 
-        print(f"--------------------------------")
-        print(f"Data updated from MPh-model.")
-        print(f"Data Shape: {self.data.shape}")
-        
-    def set_material_sweep(self, 
-                           sweep_name: str, 
-                           material_names: list[str],
-                           material_values: list[list[float]],
-                           sweep_type: str = "filled"):
-        """Set the data for a specific sweep."""
+        self.input_data = input_data
+        self.input_unit_map = unit_map
+        self.input_sweep_map = sweep_map
 
+        # Input table changed -> reset outputs to aligned empty frame
+        self._reset_outputs_to_inputs_index()
+
+        print("--------------------------------")
+        print("Data updated from MPh-model.")
+        print(f"Input data shape: {self.input_data.shape}")
+        print(f"Reset output data to shape of the input data: {self.output_data.shape}")
+        print(f"Combined shape: {self.combined_data.shape}")
+
+    def set_material_sweep(
+        self,
+        sweep_name: str,
+        material_names: list[str],
+        material_values: list[list[float]],
+        sweep_type: str = "filled"
+    ):
+        """Set the data for a specific sweep."""
         if sweep_name not in self.sweep_names:
             raise ValueError(f"Sweep name '{sweep_name}' not found in the model.")
-        
         sweep_index = self.sweep_names.index(sweep_name)
 
         set_material_sweep(
@@ -81,7 +128,6 @@ class CascadedSweepModel:
 
     def simulate(self, batch_dir: str = "batch_data"):
         """Run the cascaded sweep simulation."""
-
         if self.sweep_types[0] == "BatchSweep":
             set_batch_directory(self.sweep_nodes[0], directory_name=batch_dir)
 
@@ -90,3 +136,24 @@ class CascadedSweepModel:
         except Exception:
             pass
         self.model.solve(self.study_name)
+    
+    def post_process(self, post_processing_exprs: dict[str, dict[str, str]]):
+        """Perform post-processing and write results to output_data only."""
+        if self.input_data is None:
+            raise ValueError("Input data is not loaded. Please run 'update_data_from_model' first.")
+
+        for column_name, spec in post_processing_exprs.items():
+            values = self.model.evaluate(
+                expression=spec["expression"],
+                unit=spec["unit"],
+                dataset=self.model_datasets[-1],
+            )
+            self.output_data[column_name] = values
+
+            # keep metadata maps in sync with your expression dict
+            self.output_unit_map[column_name] = spec.get("unit")
+            self.output_label_map[column_name] = spec.get("label")
+
+    def clear_output_data(self):
+        """Drop all computed outputs but keep input_data."""
+        self._reset_outputs_to_inputs_index()
