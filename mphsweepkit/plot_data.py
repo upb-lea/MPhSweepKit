@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
-import json
 
 import matplotlib.patheffects as pe
 from matplotlib.axes import Axes
@@ -48,29 +47,12 @@ class DataPlot:
         self,
         input_df: pd.DataFrame,
         output_df: pd.DataFrame,
-        input_meta: dict[str, Any] | None = None,
-        output_meta: dict[str, Any] | None = None,
         folder: str | Path | None = None,
     ):
         self.folder = Path(folder) if folder is not None else None
 
         self.input_df = input_df
         self.output_df = output_df
-
-        input_meta = input_meta or {}
-        output_meta = output_meta or {}
-
-        self.input_unit_map: dict[str, str | None] = input_meta.get("input_unit_map", {})
-        self.input_sweep_map: dict[str, str | None] = input_meta.get("input_sweep_map", {})
-        self.output_unit_map: dict[str, str | None] = output_meta.get("output_unit_map", {})
-        self.output_label_map: dict[str, str | None] = output_meta.get("output_label_map", {})
-
-        self.meta: dict[str, Any] = {
-            "input_unit_map": self.input_unit_map,
-            "input_sweep_map": self.input_sweep_map,
-            "output_unit_map": self.output_unit_map,
-            "output_label_map": self.output_label_map,
-        }
 
         self.combined_df = self._build_combined_df()
 
@@ -81,13 +63,11 @@ class DataPlot:
         *,
         index_col: int | str | None = 0,
     ) -> "DataPlot":
-        """Load result tables and metadata from a result-data folder."""
+        """Load result tables from a result-data folder."""
         root = Path(folder)
 
         input_path = root / "input_data.csv"
         output_path = root / "output_data.csv"
-        input_meta_path = root / "input_meta.json"
-        output_meta_path = root / "output_meta.json"
 
         if not root.exists():
             raise FileNotFoundError(f"Result folder does not exist: {root}")
@@ -99,14 +79,10 @@ class DataPlot:
 
         input_df = cls._load_csv(input_path, index_col=index_col)
         output_df = cls._load_csv(output_path, index_col=index_col)
-        input_meta = cls._load_json(input_meta_path)
-        output_meta = cls._load_json(output_meta_path)
 
         return cls(
             input_df=input_df,
             output_df=output_df,
-            input_meta=input_meta,
-            output_meta=output_meta,
             folder=root,
         )
 
@@ -116,15 +92,6 @@ class DataPlot:
         if not path.exists():
             return pd.DataFrame()
         return pd.read_csv(path, index_col=index_col)
-
-    @staticmethod
-    def _load_json(path: Path) -> dict[str, Any]:
-        """Load JSON or return empty mapping if missing."""
-        if not path.exists():
-            return {}
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
 
     def _build_combined_df(self) -> pd.DataFrame:
         """Join input and output tables on index."""
@@ -177,17 +144,27 @@ class DataPlot:
 
         raise KeyError(f"Missing column: {column}. Available: {list(self.combined_df.columns)}")
 
+    def _resolve_meta_column_key(self, column: str) -> Any | None:
+        """Resolve column to key for metadata-row lookup; return None when missing."""
+        try:
+            return self._resolve_column_key(column)
+        except KeyError:
+            return None
+
     def get_unit(self, column: str) -> str | None:
-        """Return unit for a column, if available."""
-        if column in self.output_unit_map:
-            return self.output_unit_map.get(column)
-        return self.input_unit_map.get(column)
+        """Return unit for a column from metadata rows, if available."""
+        key = self._resolve_meta_column_key(column)
+        if key is None:
+            return None
+        return self._read_meta_value(self.combined_df, key, "unit")
 
     def get_label(self, column: str) -> str:
-        """Return display label for a column, falling back to the column name."""
-        label = self.output_label_map.get(column)
-        if label:
-            return label
+        """Return display label from metadata rows, falling back to column name."""
+        key = self._resolve_meta_column_key(column)
+        if key is not None:
+            label = self._read_meta_value(self.combined_df, key, "label")
+            if label:
+                return label
         return column
 
     def format_axis_label(self, column: str) -> str:
@@ -226,7 +203,7 @@ class DataPlot:
 
     def _legend_title_and_unit(self, column: str, key: Any) -> tuple[str, str | None]:
         """Return legend title and unit for a semantic column name and resolved key."""
-        unit = self._read_meta_value(self.combined_df, key, "unit") or self.get_unit(column)
+        unit = self._read_meta_value(self.combined_df, key, "unit")
         title = f"{self.get_label(column)} [{unit}]" if unit else self.get_label(column)
         return title, unit
 
