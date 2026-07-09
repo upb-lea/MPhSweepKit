@@ -15,7 +15,6 @@ from .meta_data import COLUMN_LEVELS
 class PostProcessSpec(TypedDict):
     expression: str
     unit: NotRequired[str]
-    label: NotRequired[str]
 
 
 class CascadedSweepModel:
@@ -57,18 +56,15 @@ class CascadedSweepModel:
     @staticmethod
     def _build_multiindex_columns(
         names: list[str],
-        label_map: dict[str, str | None] | None = None,
         unit_map: dict[str, str | None] | None = None,
         group_map: dict[str, str | None] | None = None,
     ) -> pd.MultiIndex:
-        """Create metadata-rich 4-level MultiIndex columns."""
-        label_map = label_map or {}
+        """Create metadata-rich 3-level MultiIndex columns."""
         unit_map = unit_map or {}
         group_map = group_map or {}
         tuples = [
             (
                 name,
-                label_map.get(name),
                 unit_map.get(name),
                 group_map.get(name),
             )
@@ -117,7 +113,6 @@ class CascadedSweepModel:
         self.input_data = input_data
         self.input_data.columns = self._build_multiindex_columns(
             names=[str(col) for col in self.input_data.columns],
-            label_map={},
             unit_map=unit_map,
             group_map=sweep_map,
         )
@@ -176,9 +171,8 @@ class CascadedSweepModel:
             )
             column_key = (
                 column_name,
-                spec.get("label"),
                 spec.get("unit"),
-                None,
+                "post-processing"
             )
             self.output_data.loc[:, column_key] = values
 
