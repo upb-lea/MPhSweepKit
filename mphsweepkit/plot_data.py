@@ -151,27 +151,33 @@ class DataPlot:
         except KeyError:
             return None
 
-    def get_unit(self, column: str) -> str | None:
-        """Return unit for a column from metadata rows, if available."""
+    def _get_meta_text(self, column: str, row_name: str) -> str | None:
+        """Read metadata-row text for a semantic column name."""
         key = self._resolve_meta_column_key(column)
         if key is None:
             return None
-        return self._read_meta_value(self.combined_df, key, "unit")
+        return self._read_meta_value(self.combined_df, key, row_name)
+
+    def _label_and_unit(self, column: str) -> tuple[str, str | None]:
+        """Return display label and unit from metadata rows."""
+        label = self._get_meta_text(column, "label") or column
+        unit = self._get_meta_text(column, "unit")
+        return label, unit
+
+    def get_unit(self, column: str) -> str | None:
+        """Return unit for a column from metadata rows, if available."""
+        _, unit = self._label_and_unit(column)
+        return unit
 
     def get_label(self, column: str) -> str:
         """Return display label from metadata rows, falling back to column name."""
-        key = self._resolve_meta_column_key(column)
-        if key is not None:
-            label = self._read_meta_value(self.combined_df, key, "label")
-            if label:
-                return label
-        return column
+        label, _ = self._label_and_unit(column)
+        return label
 
     def format_axis_label(self, column: str) -> str:
         """Return a Matplotlib-friendly axis label with unit if present."""
-        label = self.get_label(column)
-        unit = self.get_unit(column)
-        return f"{label} [{unit}]" if unit else label
+        label, unit = self._label_and_unit(column)
+        return label + " [" + unit + "]" if unit else label
 
     @staticmethod
     def _fmt_legend_value(value: Any) -> str:
@@ -203,8 +209,8 @@ class DataPlot:
 
     def _legend_title_and_unit(self, column: str, key: Any) -> tuple[str, str | None]:
         """Return legend title and unit for a semantic column name and resolved key."""
-        unit = self._read_meta_value(self.combined_df, key, "unit")
-        title = f"{self.get_label(column)} [{unit}]" if unit else self.get_label(column)
+        label, unit = self._label_and_unit(column)
+        title = f"{label} [{unit}]" if unit else label
         return title, unit
 
     def _prepare_plot_df(self, x_key: Any, y_key: Any, color_key: Any, style_key: Any) -> pd.DataFrame:
@@ -217,12 +223,16 @@ class DataPlot:
         df = df.dropna(subset=[x_key, y_key, color_key, style_key])
         return df
 
-    def _build_style_maps(self, df: pd.DataFrame, color_key: Any, style_key: Any) -> tuple[list[Any], list[Any], dict[Any, Any], dict[Any, str]]:
+    def _build_style_maps(
+        self,
+        df: pd.DataFrame,
+        color_key: Any,
+        style_key: Any,
+        settings: PlotSettings,
+    ) -> tuple[list[Any], list[Any], dict[Any, Any], dict[Any, str]]:
         """Create ordered color/style values and corresponding matplotlib maps."""
         color_values = sorted(df[color_key].unique(), key=self._sort_key)
         style_values = sorted(df[style_key].unique(), key=self._sort_key)
-
-        settings = getattr(self, "_active_plot_settings", PlotSettings())
 
         cmap = plt.get_cmap(settings.color_map_name, len(color_values))
         color_map = {value: cmap(i) for i, value in enumerate(color_values)}
@@ -299,7 +309,6 @@ class DataPlot:
     ) -> None:
         """Plot y(x) grouped by color/style columns with simple legends."""
         settings = settings or PlotSettings()
-        self._active_plot_settings = settings
 
         x_key = self._resolve_column_key(x_col)
         y_key = self._resolve_column_key(y_col)
@@ -313,7 +322,12 @@ class DataPlot:
         if df.empty:
             return
 
-        color_values, style_values, color_map, style_map = self._build_style_maps(df, color_key, style_key)
+        color_values, style_values, color_map, style_map = self._build_style_maps(
+            df,
+            color_key,
+            style_key,
+            settings,
+        )
 
         for (cval, sval), g in df.groupby([color_key, style_key], sort=True):
             g = g.sort_values(x_key)
