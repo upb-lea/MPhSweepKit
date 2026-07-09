@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import Optional, TypedDict, NotRequired, Any
 from pathlib import Path
-import json
 import pandas as pd
 import numpy as np
 
@@ -11,6 +10,7 @@ from mphsweepkit.sweep_cascade import get_cascaded_dataset
 from mphsweepkit.directories import set_batch_directory
 from mphsweepkit.sweep_helpers import set_material_sweep
 
+from .meta_data import COLUMN_LEVELS
 
 class PostProcessSpec(TypedDict):
     expression: str
@@ -20,6 +20,8 @@ class PostProcessSpec(TypedDict):
 
 class CascadedSweepModel:
     """A class to work on a COMSOL model with cascaded sweeps."""
+
+    
 
     def __init__(self, model: Any, study_name: str):
         self.model = model
@@ -39,13 +41,9 @@ class CascadedSweepModel:
 
         # Input containers and metadata maps
         self.input_data: Optional[pd.DataFrame] = None
-        self.input_unit_map: dict[str, str | None] = {}
-        self.input_sweep_map: dict[str, str | None] = {}
 
         # Output containers and metadata maps
         self.output_data: pd.DataFrame = pd.DataFrame()
-        self.output_unit_map: dict[str, str | None] = {}
-        self.output_label_map: dict[str, str | None] = {}
 
         self.update_data_from_model()
 
@@ -56,6 +54,27 @@ class CascadedSweepModel:
             return pd.DataFrame()
         return self.input_data.join(self.output_data, how="left")
 
+    @staticmethod
+    def _build_multiindex_columns(
+        names: list[str],
+        label_map: dict[str, str | None] | None = None,
+        unit_map: dict[str, str | None] | None = None,
+        group_map: dict[str, str | None] | None = None,
+    ) -> pd.MultiIndex:
+        """Create metadata-rich 4-level MultiIndex columns."""
+        label_map = label_map or {}
+        unit_map = unit_map or {}
+        group_map = group_map or {}
+        tuples = [
+            (
+                name,
+                label_map.get(name),
+                unit_map.get(name),
+                group_map.get(name),
+            )
+            for name in names
+        ]
+        return pd.MultiIndex.from_tuples(tuples, names=list(COLUMN_LEVELS))
 
     def print_initialization_summary(self):
         """Prints a message about the initialized cascaded sweep model."""
@@ -79,10 +98,11 @@ class CascadedSweepModel:
         """
         if self.input_data is None:
             self.output_data = pd.DataFrame()
-            self.output_unit_map = {}
             return
-        self.output_data = pd.DataFrame(index=self.input_data.index)
-        self.output_unit_map = {}
+        self.output_data = pd.DataFrame(
+            index=self.input_data.index,
+            columns=pd.MultiIndex.from_tuples([], names=list(COLUMN_LEVELS)),
+        )
 
     def update_data_from_model(self):
         """Load sweep data from the COMSOL model and build cascaded input dataset."""
@@ -95,8 +115,12 @@ class CascadedSweepModel:
         )
 
         self.input_data = input_data
-        self.input_unit_map = unit_map
-        self.input_sweep_map = sweep_map
+        self.input_data.columns = self._build_multiindex_columns(
+            names=[str(col) for col in self.input_data.columns],
+            label_map={},
+            unit_map=unit_map,
+            group_map=sweep_map,
+        )
 
         # Input table changed -> reset outputs to aligned empty frame
         self._reset_outputs_to_inputs_index()
@@ -150,25 +174,25 @@ class CascadedSweepModel:
                 unit=spec["unit"],
                 dataset=self.model_datasets[-1],
             )
-            self.output_data[column_name] = values
-
-            # keep metadata maps in sync with your expression dict
-            self.output_unit_map[column_name] = spec.get("unit")
-            self.output_label_map[column_name] = spec.get("label")
+            column_key = (
+                column_name,
+                spec.get("label"),
+                spec.get("unit"),
+                None,
+            )
+            self.output_data.loc[:, column_key] = values
 
     def clear_output_data(self):
         """Drop all computed outputs but keep input_data."""
         self._reset_outputs_to_inputs_index()
 
     def save_result_data(self, folder: str = "result_data"):
-        """Save input/output dataframes and metadata maps to disk.
+        """Save input/output dataframes to disk.
 
         Folder structure:
             <folder>/
                 input_data.csv
                 output_data.csv
-                input_meta.json
-                output_meta.json
         """
         target_dir = Path(folder)
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -177,21 +201,5 @@ class CascadedSweepModel:
         input_df = self.input_data if self.input_data is not None else pd.DataFrame()
         input_df.to_csv(target_dir / "input_data.csv", index=True)
         self.output_data.to_csv(target_dir / "output_data.csv", index=True)
-
-        # Save metadata maps
-        input_meta = {
-            "input_unit_map": self.input_unit_map,
-            "input_sweep_map": self.input_sweep_map,
-        }
-        output_meta = {
-            "output_unit_map": self.output_unit_map,
-            "output_label_map": self.output_label_map,
-        }
-
-        with open(target_dir / "input_meta.json", "w", encoding="utf-8") as f:
-            json.dump(input_meta, f, indent=2)
-
-        with open(target_dir / "output_meta.json", "w", encoding="utf-8") as f:
-            json.dump(output_meta, f, indent=2)
 
         print(f"Saved result data to: {target_dir.resolve()}")

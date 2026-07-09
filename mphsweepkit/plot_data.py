@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
 import json
@@ -10,6 +11,30 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
+
+from .meta_data import METADATA_ROW_NAMES
+
+
+@dataclass(slots=True)
+class PlotSettings:
+    """Configurable plot settings for grouped line plots."""
+
+    x_scale: str = "log"
+    y_scale: str = "log"
+    show_grid: bool = True
+    grid_which: str = "both"
+    grid_alpha: float = 0.3
+    marker: str = "o"
+    marker_size: float = 4
+    line_width: float = 1.8
+    color_map_name: str = "viridis"
+    line_styles: tuple[str, ...] = ("-", "--", "-.", ":")
+    show_color_legend: bool = True
+    show_style_legend: bool = True
+    color_legend_anchor: tuple[float, float] = (1.02, 1)
+    style_legend_anchor: tuple[float, float] = (1.02, 0.45)
+    legend_loc: str = "upper left"
+    use_tight_layout: bool = True
 
 
 class DataPlot:
@@ -130,6 +155,28 @@ class DataPlot:
         if missing:
             raise KeyError(f"Missing columns: {missing}. Available: {sorted(available)}")
 
+    def _resolve_column_key(self, column: str) -> Any:
+        """Resolve a user-facing column name to an actual dataframe column key.
+
+        Supports both flat columns and MultiIndex columns where the first level
+        stores the semantic column name.
+        """
+        if column in self.combined_df.columns:
+            return column
+
+        if isinstance(self.combined_df.columns, pd.MultiIndex):
+            hits = [c for c in self.combined_df.columns if len(c) > 0 and c[0] == column]
+            if len(hits) == 1:
+                return hits[0]
+            if len(hits) > 1:
+                # Prefer output-like columns with no group (4th level None)
+                for c in hits:
+                    if len(c) >= 4 and c[3] is None:
+                        return c
+                return hits[0]
+
+        raise KeyError(f"Missing column: {column}. Available: {list(self.combined_df.columns)}")
+
     def get_unit(self, column: str) -> str | None:
         """Return unit for a column, if available."""
         if column in self.output_unit_map:
@@ -149,6 +196,121 @@ class DataPlot:
         unit = self.get_unit(column)
         return f"{label} [{unit}]" if unit else label
 
+    @staticmethod
+    def _fmt_legend_value(value: Any) -> str:
+        """Format value for legend labels, preferring compact numeric formatting."""
+        try:
+            return f"{float(value):.3g}"
+        except (TypeError, ValueError):
+            return str(value)
+
+    @staticmethod
+    def _sort_key(value: Any) -> tuple[int, float | str]:
+        """Sort numerically when possible, otherwise lexicographically."""
+        try:
+            return (0, float(value))
+        except (TypeError, ValueError):
+            return (1, str(value))
+
+    @staticmethod
+    def _read_meta_value(frame: pd.DataFrame, key: Any, row_name: str) -> str | None:
+        """Read metadata value from a specific dataframe row and column key."""
+        try:
+            value = frame.loc[row_name, key]
+        except Exception:
+            return None
+        if pd.isna(value):
+            return None
+        text = str(value).strip()
+        return text or None
+
+    def _legend_title_and_unit(self, column: str, key: Any) -> tuple[str, str | None]:
+        """Return legend title and unit for a semantic column name and resolved key."""
+        unit = self._read_meta_value(self.combined_df, key, "unit") or self.get_unit(column)
+        title = f"{self.get_label(column)} [{unit}]" if unit else self.get_label(column)
+        return title, unit
+
+    def _prepare_plot_df(self, x_key: Any, y_key: Any, color_key: Any, style_key: Any) -> pd.DataFrame:
+        """Return cleaned dataframe used for plotting grouped lines."""
+        df = self.combined_df.copy()
+        df = df.loc[~df.index.astype(str).str.lower().isin(METADATA_ROW_NAMES)]
+        df[x_key] = pd.to_numeric(df[x_key], errors="coerce")
+        df[y_key] = pd.to_numeric(df[y_key], errors="coerce")
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.dropna(subset=[x_key, y_key, color_key, style_key])
+        return df
+
+    def _build_style_maps(self, df: pd.DataFrame, color_key: Any, style_key: Any) -> tuple[list[Any], list[Any], dict[Any, Any], dict[Any, str]]:
+        """Create ordered color/style values and corresponding matplotlib maps."""
+        color_values = sorted(df[color_key].unique(), key=self._sort_key)
+        style_values = sorted(df[style_key].unique(), key=self._sort_key)
+
+        settings = getattr(self, "_active_plot_settings", PlotSettings())
+
+        cmap = plt.get_cmap(settings.color_map_name, len(color_values))
+        color_map = {value: cmap(i) for i, value in enumerate(color_values)}
+
+        linestyles = list(settings.line_styles) if settings.line_styles else ["-"]
+        style_map = {value: linestyles[i % len(linestyles)] for i, value in enumerate(style_values)}
+        return color_values, style_values, color_map, style_map
+
+    def _add_legends(
+        self,
+        ax: Axes,
+        color_values: list[Any],
+        style_values: list[Any],
+        color_map: dict[Any, Any],
+        style_map: dict[Any, str],
+        color_title: str,
+        style_title: str,
+        color_unit: str | None,
+        style_unit: str | None,
+        settings: PlotSettings,
+    ) -> None:
+        """Add separate color and style legends to the axis."""
+        color_suffix = f" {color_unit}" if color_unit else ""
+        style_suffix = f" {style_unit}" if style_unit else ""
+
+        if settings.show_color_legend:
+            color_handles = [
+                Line2D(
+                    [0],
+                    [0],
+                    color=color_map[value],
+                    marker=settings.marker,
+                    lw=2,
+                    ms=settings.marker_size,
+                    label=f"{self._fmt_legend_value(value)}{color_suffix}",
+                )
+                for value in color_values
+            ]
+            color_legend = ax.legend(
+                handles=color_handles,
+                title=color_title,
+                bbox_to_anchor=settings.color_legend_anchor,
+                loc=settings.legend_loc,
+            )
+            ax.add_artist(color_legend)
+
+        if settings.show_style_legend:
+            style_handles = [
+                Line2D(
+                    [0],
+                    [0],
+                    color="black",
+                    linestyle=style_map[value],
+                    lw=2,
+                    label=f"{self._fmt_legend_value(value)}{style_suffix}",
+                )
+                for value in style_values
+            ]
+            ax.legend(
+                handles=style_handles,
+                title=style_title,
+                bbox_to_anchor=settings.style_legend_anchor,
+                loc=settings.legend_loc,
+            )
+
     def y_over_x_with_color_and_style(
         self,
         ax: Axes,
@@ -156,105 +318,58 @@ class DataPlot:
         x_col: str = "freq",
         color_col: str = "w",
         style_col: str = "b_mean",
+        settings: PlotSettings | None = None,
     ) -> None:
-        """Create a datasheet-style log-log plot for one result over frequency."""
-        cols = [y_col, x_col, color_col, style_col]
-        self.assert_columns_exist(cols)
+        """Plot y(x) grouped by color/style columns with simple legends."""
+        settings = settings or PlotSettings()
+        self._active_plot_settings = settings
 
-        color_values = sorted(self.df[color_col].dropna().unique())
-        cmap = plt.get_cmap("viridis", len(color_values))
-        value_to_color = {v: cmap(i) for i, v in enumerate(color_values)}
+        x_key = self._resolve_column_key(x_col)
+        y_key = self._resolve_column_key(y_col)
+        color_key = self._resolve_column_key(color_col)
+        style_key = self._resolve_column_key(style_col)
 
-        style_values = sorted(self.df[style_col].dropna().unique())
-        linestyles = ["-", "--", "-.", ":"]
-        value_to_ls = {v: linestyles[i % len(linestyles)] for i, v in enumerate(style_values)}
+        color_title, color_unit = self._legend_title_and_unit(color_col, color_key)
+        style_title, style_unit = self._legend_title_and_unit(style_col, style_key)
 
-        label_points: dict[Any, tuple[float, float]] = {}
+        df = self._prepare_plot_df(x_key, y_key, color_key, style_key)
+        if df.empty:
+            return
 
-        grouped = self.df.sort_values(x_col).groupby([color_col, style_col], sort=True)
-        for (color_val, style_val), g in grouped:
-            x = g[x_col].to_numpy()
-            y = g[y_col].to_numpy()
+        color_values, style_values, color_map, style_map = self._build_style_maps(df, color_key, style_key)
 
+        for (cval, sval), g in df.groupby([color_key, style_key], sort=True):
+            g = g.sort_values(x_key)
             ax.plot(
-                x,
-                y,
-                marker="o",
-                ms=4,
-                lw=1.8,
-                alpha=0.95,
-                color=value_to_color[color_val],
-                linestyle=value_to_ls[style_val],
-                label=f"{color_col}={color_val:.3g}",
+                g[x_key].to_numpy(float),
+                g[y_key].to_numpy(float),
+                marker=settings.marker,
+                ms=settings.marker_size,
+                lw=settings.line_width,
+                color=color_map[cval],
+                linestyle=style_map[sval],
             )
 
-            i = int(np.argmax(x))
-            xp, yp = float(x[i]), float(y[i])
-            if style_val not in label_points or (
-                xp >= label_points[style_val][0] and yp > label_points[style_val][1]
-            ):
-                label_points[style_val] = (xp, yp)
+        ax.set_xscale(settings.x_scale)
+        ax.set_yscale(settings.y_scale)
+        ax.set_xlabel(self.format_axis_label(x_col))
+        ax.set_ylabel(self.format_axis_label(y_col))
+        ax.set_title(f"{self.get_label(y_col)} over {self.get_label(x_col)}")
+        if settings.show_grid:
+            ax.grid(True, which=settings.grid_which, alpha=settings.grid_alpha)
 
-        freq_unit = self.input_unit_map.get(x_col)
-        style_unit = self.input_unit_map.get(style_col)
-        metric_unit = self.output_unit_map.get(y_col)
-        metric_label = self.get_label(y_col)
-
-        x_label = self.format_axis_label(x_col) if freq_unit else x_col
-        resolved_y_label = (
-            self.format_axis_label(y_col)
-            if (metric_label or metric_unit)
-            else y_col
-        )
-        style_suffix = "" if not style_unit else f" {style_unit}"
-
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.set_xlabel(x_label)
-        ax.set_ylabel(resolved_y_label)
-        ax.set_title(f"{metric_label} over frequency")
-        ax.grid(True, which="both", alpha=0.3)
-
-        color_handles = [
-            Line2D(
-                [0],
-                [0],
-                color=value_to_color[color_val],
-                linestyle="-",
-                lw=2,
-                marker="o",
-                ms=4,
-                label=f"{color_val:.3g}",
-            )
-            for color_val in color_values
-        ]
-        color_legend = ax.legend(
-            handles=color_handles,
-            title=color_col,
-            bbox_to_anchor=(1.02, 1),
-            loc="upper left",
-        )
-        ax.add_artist(color_legend)
-
-        style_handles = [
-            Line2D(
-                [0],
-                [0],
-                color="k",
-                linestyle=value_to_ls[style_val],
-                lw=2,
-                label=f"{style_val:.3g}{style_suffix}",
-            )
-            for style_val in style_values
-        ]
-        ax.legend(
-            handles=style_handles,
-            title=style_col,
-            bbox_to_anchor=(1.02, 0.45),
-            loc="upper left",
+        self._add_legends(
+            ax=ax,
+            color_values=color_values,
+            style_values=style_values,
+            color_map=color_map,
+            style_map=style_map,
+            color_title=color_title,
+            style_title=style_title,
+            color_unit=color_unit,
+            style_unit=style_unit,
+            settings=settings,
         )
 
-        xmin, xmax = ax.get_xlim()
-        ax.set_xlim(xmin, xmax * 1.25)
-
-        plt.tight_layout()
+        if settings.use_tight_layout:
+            plt.tight_layout()
