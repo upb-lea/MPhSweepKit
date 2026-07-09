@@ -36,6 +36,20 @@ class PlotSettings:
     use_tight_layout: bool = True
 
 
+@dataclass(slots=True)
+class PlotTextOverrides:
+    """Optional label/unit overrides for axes and legends."""
+
+    x_label: str | None = None
+    x_unit: str | None = None
+    y_label: str | None = None
+    y_unit: str | None = None
+    color_label: str | None = None
+    color_unit: str | None = None
+    style_label: str | None = None
+    style_unit: str | None = None
+
+
 class DataPlot:
     """Plot helper for scalar metrics stored in result-data tables.
 
@@ -210,8 +224,13 @@ class DataPlot:
     def _legend_title_and_unit(self, column: str, key: Any) -> tuple[str, str | None]:
         """Return legend title and unit for a semantic column name and resolved key."""
         label, unit = self._label_and_unit(column)
-        title = f"{label} [{unit}]" if unit else label
+        title = label
         return title, unit
+
+    @staticmethod
+    def _format_label_with_unit(label: str, unit: str | None) -> str:
+        """Return display label with optional unit suffix."""
+        return label + " [" + unit + "]" if unit else label
 
     def _prepare_plot_df(self, x_key: Any, y_key: Any, color_key: Any, style_key: Any) -> pd.DataFrame:
         """Return cleaned dataframe used for plotting grouped lines."""
@@ -306,9 +325,11 @@ class DataPlot:
         color_col: str = "w",
         style_col: str = "b_mean",
         settings: PlotSettings | None = None,
+        text_overrides: PlotTextOverrides | None = None,
     ) -> None:
         """Plot y(x) grouped by color/style columns with simple legends."""
         settings = settings or PlotSettings()
+        text_overrides = text_overrides or PlotTextOverrides()
 
         x_key = self._resolve_column_key(x_col)
         y_key = self._resolve_column_key(y_col)
@@ -317,6 +338,19 @@ class DataPlot:
 
         color_title, color_unit = self._legend_title_and_unit(color_col, color_key)
         style_title, style_unit = self._legend_title_and_unit(style_col, style_key)
+
+        x_label, x_unit = self._label_and_unit(x_col)
+        y_label, y_unit = self._label_and_unit(y_col)
+
+        x_label = text_overrides.x_label or x_label
+        x_unit = text_overrides.x_unit if text_overrides.x_unit is not None else x_unit
+        y_label = text_overrides.y_label or y_label
+        y_unit = text_overrides.y_unit if text_overrides.y_unit is not None else y_unit
+
+        color_title = text_overrides.color_label or color_title
+        color_unit = text_overrides.color_unit if text_overrides.color_unit is not None else color_unit
+        style_title = text_overrides.style_label or style_title
+        style_unit = text_overrides.style_unit if text_overrides.style_unit is not None else style_unit
 
         df = self._prepare_plot_df(x_key, y_key, color_key, style_key)
         if df.empty:
@@ -343,9 +377,9 @@ class DataPlot:
 
         ax.set_xscale(settings.x_scale)
         ax.set_yscale(settings.y_scale)
-        ax.set_xlabel(self.format_axis_label(x_col))
-        ax.set_ylabel(self.format_axis_label(y_col))
-        ax.set_title(f"{self.get_label(y_col)} over {self.get_label(x_col)}")
+        ax.set_xlabel(self._format_label_with_unit(x_label, x_unit))
+        ax.set_ylabel(self._format_label_with_unit(y_label, y_unit))
+        ax.set_title(f"{y_label} over {x_label}")
         if settings.show_grid:
             ax.grid(True, which=settings.grid_which, alpha=settings.grid_alpha)
 
