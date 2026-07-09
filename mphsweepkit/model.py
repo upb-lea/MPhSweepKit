@@ -1,15 +1,15 @@
 """Provides the class to perform a cascaded sweep on a COMSOL model accessed via the MPh API."""
 from __future__ import annotations
 
-from typing import Optional, TypedDict, NotRequired
+from typing import Optional, TypedDict, NotRequired, Any
 from pathlib import Path
 import json
 import pandas as pd
-import mph
+import numpy as np
 
-from mphsweepkit.cascaded_sweep import get_cascaded_dataset
+from mphsweepkit.sweep_cascade import get_cascaded_dataset
 from mphsweepkit.directories import set_batch_directory
-from mphsweepkit.sweep import set_material_sweep
+from mphsweepkit.sweep_helpers import set_material_sweep
 
 
 class PostProcessSpec(TypedDict):
@@ -21,7 +21,7 @@ class PostProcessSpec(TypedDict):
 class CascadedSweepModel:
     """A class to work on a COMSOL model with cascaded sweeps."""
 
-    def __init__(self, model: mph.Model, study_name: str):
+    def __init__(self, model: Any, study_name: str):
         self.model = model
         self.study_name = study_name
 
@@ -111,7 +111,7 @@ class CascadedSweepModel:
         self,
         sweep_name: str,
         material_names: list[str],
-        material_values: list[list[float]],
+        material_values: list[list[float]] | np.ndarray,
         sweep_type: str = "filled"
     ):
         """Set the data for a specific sweep."""
@@ -122,7 +122,7 @@ class CascadedSweepModel:
         set_material_sweep(
             sweep_node=self.sweep_nodes[sweep_index],
             material_names=material_names,
-            material_values=material_values,
+            material_values=np.asarray(material_values, dtype=np.float64),
             sweep_type=sweep_type
         )
 
