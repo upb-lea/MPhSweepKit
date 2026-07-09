@@ -1,0 +1,22 @@
+{
+  "input_unit_map": {
+    "hor_slit": "um",
+    "vert_slit": "um",
+    "w": "mm",
+    "l_r": "mm",
+    "a_e": "mm",
+    "matsw.comp1.core": "",
+    "b_mean": "mT",
+    "freq": "kHz"
+  },
+  "input_sweep_map": {
+    "hor_slit": "Geometry Sweep",
+    "vert_slit": "Geometry Sweep",
+    "w": "Geometry Sweep",
+    "l_r": "Geometry Sweep",
+    "a_e": "Geometry Sweep",
+    "matsw.comp1.core": "Material Sweep",
+    "b_mean": "Excitation Sweep",
+    "freq": "Frequency Sweep"
+  }
+}

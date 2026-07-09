@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from typing import Optional, TypedDict, NotRequired
+from pathlib import Path
+import json
 import pandas as pd
 import mph
 
@@ -157,3 +159,37 @@ class CascadedSweepModel:
     def clear_output_data(self):
         """Drop all computed outputs but keep input_data."""
         self._reset_outputs_to_inputs_index()
+
+    def save_result_data(self, folder: str = "result_data"):
+        """Save input/output dataframes and metadata maps to disk.
+
+        Folder structure:
+            <folder>/
+                input_data.csv
+                output_data.csv
+                input_meta.json
+                output_meta.json
+        """
+        target_dir = Path(folder)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save tabular data
+        input_df = self.input_data if self.input_data is not None else pd.DataFrame()
+        input_df.to_csv(target_dir / "input_data.csv", index=False)
+        self.output_data.to_csv(target_dir / "output_data.csv", index=False)
+
+        # Save metadata maps
+        input_meta = {
+            "input_unit_map": self.input_unit_map,
+            "input_sweep_map": self.input_sweep_map,
+        }
+        output_meta = {
+            "output_unit_map": self.output_unit_map,
+            "output_label_map": self.output_label_map,
+        }
+
+        with open(target_dir / "input_meta.json", "w", encoding="utf-8") as f:
+            json.dump(input_meta, f, indent=2)
+
+        with open(target_dir / "output_meta.json", "w", encoding="utf-8") as f:
+            json.dump(output_meta, f, indent=2)

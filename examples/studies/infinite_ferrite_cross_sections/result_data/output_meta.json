@@ -1,0 +1,12 @@
+{
+  "output_unit_map": {
+    "p_loss": "W /m^3",
+    "p_mag": "W /m^3",
+    "p_el": "W /m^3"
+  },
+  "output_label_map": {
+    "p_loss": "$p_\\mathrm{loss}$",
+    "p_mag": "$p_\\mathrm{mag}$",
+    "p_el": "$p_\\mathrm{el}$"
+  }
+}
