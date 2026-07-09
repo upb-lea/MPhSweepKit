@@ -175,8 +175,8 @@ class CascadedSweepModel:
 
         # Save tabular data
         input_df = self.input_data if self.input_data is not None else pd.DataFrame()
-        input_df.to_csv(target_dir / "input_data.csv", index=False)
-        self.output_data.to_csv(target_dir / "output_data.csv", index=False)
+        input_df.to_csv(target_dir / "input_data.csv", index=True)
+        self.output_data.to_csv(target_dir / "output_data.csv", index=True)
 
         # Save metadata maps
         input_meta = {
@@ -193,3 +193,5 @@ class CascadedSweepModel:
 
         with open(target_dir / "output_meta.json", "w", encoding="utf-8") as f:
             json.dump(output_meta, f, indent=2)
+
+        print(f"Saved result data to: {target_dir.resolve()}")
