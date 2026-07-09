@@ -48,3 +48,87 @@ by
     ...
 
 .
+
+
+Documentation
+-------------------
+
+MPhSweepKit provides utilities to configure, run, and evaluate cascaded parameter
+sweeps on COMSOL models through the MPh API.
+
+Core modules
+^^^^^^^^^^^^^^^^^^^
+
+- ``mphsweepkit.model``
+  Contains ``CascadedSweepModel`` as the main high-level interface for sweep workflows.
+
+  Main responsibilities:
+
+  - Read sweep definitions from a COMSOL study and build a cascaded input table.
+  - Update material sweep definitions via ``set_material_sweep(...)``.
+  - Run simulations via ``simulate(...)`` (including batch directory handling).
+  - Evaluate post-processing expressions via ``post_process(...)``.
+  - Persist results and metadata via ``save_result_data(...)``.
+
+  Result export structure created by ``save_result_data(folder="result_data")``:
+
+  - ``input_data.csv``
+  - ``output_data.csv``
+  - ``input_meta.json``
+  - ``output_meta.json``
+
+- ``mphsweepkit.plot_data``
+  Contains ``DataPlot`` for loading and exploring exported scalar result data.
+
+  Main responsibilities:
+
+  - Load result files using ``DataPlot.from_result_folder(...)``.
+  - Expose ``input_df``, ``output_df``, and ``combined_df`` (``df`` alias).
+  - Provide metadata helpers for labels and units:
+
+     - ``get_label(column)``
+     - ``get_unit(column)``
+     - ``format_axis_label(column)``
+
+  - Provide column discovery and validation helpers:
+
+     - ``input_columns()``
+     - ``output_columns()``
+     - ``available_columns()``
+     - ``assert_columns_exist(columns)``
+
+Supporting modules
+^^^^^^^^^^^^^^^^^^^
+
+- ``mphsweepkit.sweep_cascade``: creation of cascaded sweep datasets.
+- ``mphsweepkit.sweep_helpers``: sweep node configuration helpers.
+- ``mphsweepkit.directories``: batch/result directory handling.
+- ``mphsweepkit.postprocessing``: post-processing support functions.
+- ``mphsweepkit.plot_fields``: field-plot related helpers.
+
+Typical workflow
+^^^^^^^^^^^^^^^^^^^
+
+1. Build a model wrapper:
+
+    ``csm = CascadedSweepModel(model, study_name="...")``
+
+2. Configure sweeps (optional):
+
+    ``csm.set_material_sweep(...)``
+
+3. Run simulation:
+
+    ``csm.simulate(batch_dir="batch_data")``
+
+4. Evaluate scalar post-processing expressions:
+
+    ``csm.post_process(post_processing_exprs)``
+
+5. Save data and metadata:
+
+    ``csm.save_result_data(folder="result_data")``
+
+6. Load exported results for plotting/analysis:
+
+    ``dp = DataPlot.from_result_folder("result_data")``
