@@ -49,11 +49,6 @@ class DataPlot:
 
         self.combined_df = self._build_combined_df()
 
-    @property
-    def df(self) -> pd.DataFrame:
-        """Backward-compatible alias for the combined dataframe."""
-        return self.combined_df
-
     @classmethod
     def from_result_folder(
         cls,
