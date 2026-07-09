@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 from pathlib import Path
 
 import matplotlib.patheffects as pe
@@ -21,7 +21,7 @@ class PlotSettings:
     x_scale: str = "log"
     y_scale: str = "log"
     show_grid: bool = True
-    grid_which: str = "both"
+    grid_which: Literal["major", "minor", "both"] = "both"
     grid_alpha: float = 0.3
     marker: str = "o"
     marker_size: float = 4
