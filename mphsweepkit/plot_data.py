@@ -7,6 +7,7 @@ import json
 import matplotlib.patheffects as pe
 from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
 
@@ -152,3 +153,113 @@ class DataPlot:
         label = self.get_label(column)
         unit = self.get_unit(column)
         return f"{label} [{unit}]" if unit else label
+
+    def y_over_x_with_color_and_style(
+        self,
+        ax: Axes,
+        y_col: str = "p_loss",
+        x_col: str = "freq",
+        color_col: str = "w",
+        style_col: str = "b_mean",
+    ) -> None:
+        """Create a datasheet-style log-log plot for one result over frequency."""
+        cols = [y_col, x_col, color_col, style_col]
+        self.assert_columns_exist(cols)
+
+        color_values = sorted(self.df[color_col].dropna().unique())
+        cmap = plt.get_cmap("viridis", len(color_values))
+        value_to_color = {v: cmap(i) for i, v in enumerate(color_values)}
+
+        style_values = sorted(self.df[style_col].dropna().unique())
+        linestyles = ["-", "--", "-.", ":"]
+        value_to_ls = {v: linestyles[i % len(linestyles)] for i, v in enumerate(style_values)}
+
+        label_points: dict[Any, tuple[float, float]] = {}
+
+        grouped = self.df.sort_values(x_col).groupby([color_col, style_col], sort=True)
+        for (color_val, style_val), g in grouped:
+            x = g[x_col].to_numpy()
+            y = g[y_col].to_numpy()
+
+            ax.plot(
+                x,
+                y,
+                marker="o",
+                ms=4,
+                lw=1.8,
+                alpha=0.95,
+                color=value_to_color[color_val],
+                linestyle=value_to_ls[style_val],
+                label=f"{color_col}={color_val:.3g}",
+            )
+
+            i = int(np.argmax(x))
+            xp, yp = float(x[i]), float(y[i])
+            if style_val not in label_points or (
+                xp >= label_points[style_val][0] and yp > label_points[style_val][1]
+            ):
+                label_points[style_val] = (xp, yp)
+
+        freq_unit = self.input_unit_map.get(x_col)
+        style_unit = self.input_unit_map.get(style_col)
+        metric_unit = self.output_unit_map.get(y_col)
+        metric_label = self.get_label(y_col)
+
+        x_label = self.format_axis_label(x_col) if freq_unit else x_col
+        resolved_y_label = (
+            self.format_axis_label(y_col)
+            if (metric_label or metric_unit)
+            else y_col
+        )
+        style_suffix = "" if not style_unit else f" {style_unit}"
+
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(resolved_y_label)
+        ax.set_title(f"{metric_label} over frequency")
+        ax.grid(True, which="both", alpha=0.3)
+
+        color_handles = [
+            Line2D(
+                [0],
+                [0],
+                color=value_to_color[color_val],
+                linestyle="-",
+                lw=2,
+                marker="o",
+                ms=4,
+                label=f"{color_val:.3g}",
+            )
+            for color_val in color_values
+        ]
+        color_legend = ax.legend(
+            handles=color_handles,
+            title=color_col,
+            bbox_to_anchor=(1.02, 1),
+            loc="upper left",
+        )
+        ax.add_artist(color_legend)
+
+        style_handles = [
+            Line2D(
+                [0],
+                [0],
+                color="k",
+                linestyle=value_to_ls[style_val],
+                lw=2,
+                label=f"{style_val:.3g}{style_suffix}",
+            )
+            for style_val in style_values
+        ]
+        ax.legend(
+            handles=style_handles,
+            title=style_col,
+            bbox_to_anchor=(1.02, 0.45),
+            loc="upper left",
+        )
+
+        xmin, xmax = ax.get_xlim()
+        ax.set_xlim(xmin, xmax * 1.25)
+
+        plt.tight_layout()
