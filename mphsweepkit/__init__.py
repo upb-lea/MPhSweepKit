@@ -1,8 +1,8 @@
 """Initialize the mphsweepkit package."""
 
 from .model import CascadedSweepModel
-from .cascaded_sweep import *
-from .sweep import *
+from .sweep_cascade import *
+from .sweep_helpers import *
 from .postprocessing import *
 from .plot_data import DataPlot
 from .plot_fields import *
