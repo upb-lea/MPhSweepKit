@@ -3,5 +3,5 @@
 from __future__ import annotations
 
 # Row names that may appear as metadata rows in exported result tables.
-COLUMN_LEVELS: frozenset[str] = frozenset({"name","unit", "group"})
+METADATA_ROW_NAMES: frozenset[str] = frozenset({"name","unit", "group"})
     

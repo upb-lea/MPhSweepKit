@@ -10,7 +10,7 @@ from mphsweepkit.sweep_cascade import get_cascaded_dataset
 from mphsweepkit.directories import set_batch_directory
 from mphsweepkit.sweep_helpers import set_material_sweep
 
-from .meta_data import COLUMN_LEVELS
+from .meta_data import METADATA_ROW_NAMES
 
 class PostProcessSpec(TypedDict):
     expression: str
@@ -70,7 +70,7 @@ class CascadedSweepModel:
             )
             for name in names
         ]
-        return pd.MultiIndex.from_tuples(tuples, names=list(COLUMN_LEVELS))
+        return pd.MultiIndex.from_tuples(tuples, names=list(METADATA_ROW_NAMES))
 
     def print_initialization_summary(self):
         """Prints a message about the initialized cascaded sweep model."""
@@ -97,7 +97,7 @@ class CascadedSweepModel:
             return
         self.output_data = pd.DataFrame(
             index=self.input_data.index,
-            columns=pd.MultiIndex.from_tuples([], names=list(COLUMN_LEVELS)),
+            columns=pd.MultiIndex.from_tuples([], names=list(METADATA_ROW_NAMES)),
         )
 
     def update_data_from_model(self):
