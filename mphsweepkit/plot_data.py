@@ -394,6 +394,7 @@ class DataPlot:
         x_col: str = "freq",
         color_col: str = "w",
         style_col: str = "b_mean",
+        filters: dict[str, list[Any] | tuple[Any, ...] | set[Any]] | None = None,
         settings: PlotSettings | None = None,
         text_overrides: PlotTextOverrides | None = None,
     ) -> None:
@@ -422,7 +423,9 @@ class DataPlot:
         style_title = text_overrides.style_label or style_title
         style_unit = text_overrides.style_unit if text_overrides.style_unit is not None else style_unit
 
-        df = self._prepare_plot_df(x_key, y_key, color_key, style_key)
+        # If filters are provided, plot from a temporary filtered view of this DataPlot.
+        source = self.filter_rows(filters) if filters else self
+        df = source._prepare_plot_df(x_key, y_key, color_key, style_key)
         if df.empty:
             return
 
