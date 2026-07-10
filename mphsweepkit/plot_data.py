@@ -129,6 +129,76 @@ class DataPlot:
         """Return all available combined-column names."""
         return list(self.combined_df.columns)
 
+    def filter_rows(
+        self,
+        filters: dict[str, list[Any] | tuple[Any, ...] | set[Any]],
+        *,
+        numeric_match: bool = True,
+    ) -> "DataPlot":
+        """Return a filtered ``DataPlot`` using AND-combined column filters.
+
+        Parameters
+        ----------
+        filters:
+            Mapping from semantic column name (e.g. ``"freq"``) to accepted
+            values. Values are matched with OR within each column.
+        numeric_match:
+            When ``True``, attempts numeric matching via ``pd.to_numeric`` in
+            addition to exact/object matching. This makes filters robust against
+            string-vs-numeric storage differences.
+        """
+        if not filters:
+            return DataPlot(
+                input_df=self.input_df.copy(),
+                output_df=self.output_df.copy(),
+                folder=self.folder,
+            )
+
+        if self.combined_df.empty:
+            return DataPlot(
+                input_df=self.input_df.copy(),
+                output_df=self.output_df.copy(),
+                folder=self.folder,
+            )
+
+        plot_df = self.combined_df.copy()
+        plot_df = plot_df.loc[~plot_df.index.astype(str).str.lower().isin(METADATA_ROW_NAMES)]
+
+        if plot_df.empty:
+            return DataPlot(
+                input_df=self.input_df.iloc[0:0].copy(),
+                output_df=self.output_df.iloc[0:0].copy(),
+                folder=self.folder,
+            )
+
+        mask = pd.Series(True, index=plot_df.index)
+
+        for column, accepted_values in filters.items():
+            key = self._resolve_column_key(column)
+            values = list(accepted_values)
+
+            col_mask = plot_df[key].isin(values)
+
+            if numeric_match:
+                col_numeric = pd.to_numeric(plot_df[key], errors="coerce")
+                vals_numeric = pd.to_numeric(pd.Series(values), errors="coerce")
+                vals_numeric = vals_numeric.dropna().tolist()
+                if vals_numeric:
+                    col_mask = col_mask | col_numeric.isin(vals_numeric)
+
+            mask = mask & col_mask
+
+        selected_index = plot_df.index[mask]
+
+        filtered_input = self.input_df.loc[self.input_df.index.intersection(selected_index)].copy()
+        filtered_output = self.output_df.loc[self.output_df.index.intersection(selected_index)].copy()
+
+        return DataPlot(
+            input_df=filtered_input,
+            output_df=filtered_output,
+            folder=self.folder,
+        )
+
     def assert_columns_exist(self, columns: list[str]) -> None:
         """Raise KeyError when one or more columns are not available."""
         available = set(self.combined_df.columns)
