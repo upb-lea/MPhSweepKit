@@ -8,7 +8,7 @@ import numpy as np
 
 from mphsweepkit.sweep_cascade import get_cascaded_dataset
 from mphsweepkit.directories import set_batch_directory
-from mphsweepkit.sweep_helpers import set_material_sweep
+from mphsweepkit.sweep_helpers import set_material_sweep, set_parametric_sweep
 
 from .meta_data import METADATA_ROW_NAMES
 
@@ -22,9 +22,10 @@ class CascadedSweepModel:
 
     
 
-    def __init__(self, model: Any, study_name: str):
+    def __init__(self, model: Any, study_name: str, show_param_names: bool = False):
         self.model = model
         self.study_name = study_name
+        self.show_param_names = show_param_names
 
         # Resolve study node
         self.study_node = self.model / "studies" / self.study_name
@@ -33,7 +34,7 @@ class CascadedSweepModel:
         self.sweep_nodes = self.study_node.children()
         self.sweep_names = [node.name() for node in self.sweep_nodes]
         self.sweep_types = [node.type() for node in self.sweep_nodes]
-        self.print_initialization_summary()
+        self.print_initialization_summary(show_param_names=self.show_param_names)
 
         # Model Datasets
         self.model_datasets = self.model.datasets()
@@ -72,15 +73,30 @@ class CascadedSweepModel:
         ]
         return pd.MultiIndex.from_tuples(tuples, names=list(METADATA_ROW_NAMES))
 
-    def print_initialization_summary(self):
-        """Prints a message about the initialized cascaded sweep model."""
+    def print_initialization_summary(self, show_param_names: bool = False):
+        """Print a message about the initialized cascaded sweep model.
+
+        :param show_param_names: If True, append sweep parameter names from the
+            COMSOL node property ``pname`` (when available).
+        """
         print("Initialized CascadedSweepModel")
         print(f"Study name: {self.study_name}")
         print("Sweep Structure:")
         spaces = "  "
-        for name, sweep_type in zip(self.sweep_names, self.sweep_types):
+        for node, name, sweep_type in zip(self.sweep_nodes, self.sweep_names, self.sweep_types):
             spaces += "  "
-            print(f"{spaces}- {name} ({sweep_type})")
+            line = f"{spaces}- {name} ({sweep_type})"
+            if show_param_names:
+                props = node.properties()
+                pname = props.get("pname")
+                if pname:
+                    if isinstance(pname, str):
+                        pname_list = [pname]
+                    else:
+                        pname_list = [str(item) for item in pname]
+                    shown = ", ".join(repr(item) for item in pname_list)
+                    line += f" -> {shown}"
+            print(line)
 
     def _reset_outputs_to_inputs_index(self):
         """Reset output_data so it has exactly the same index as input_data.
@@ -143,6 +159,29 @@ class CascadedSweepModel:
             material_names=material_names,
             material_values=np.asarray(material_values, dtype=np.float64),
             sweep_type=sweep_type
+        )
+
+        self.update_data_from_model()
+
+    def set_parametric_sweep(
+        self,
+        sweep_name: str,
+        param_names: list[str],
+        param_units: list[str],
+        param_values: list[list[float] | np.ndarray],
+        sweep_type: str = "sparse",
+    ):
+        """Set the data for a specific parametric sweep."""
+        if sweep_name not in self.sweep_names:
+            raise ValueError(f"Sweep name '{sweep_name}' not found in the model.")
+        sweep_index = self.sweep_names.index(sweep_name)
+
+        set_parametric_sweep(
+            sweep_node=self.sweep_nodes[sweep_index],
+            param_names=param_names,
+            param_units=param_units,
+            param_values=np.asarray(param_values, dtype=np.float64),
+            sweep_type=sweep_type,
         )
 
         self.update_data_from_model()
