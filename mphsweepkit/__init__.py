@@ -8,3 +8,4 @@ from .plot_data import DataPlot, PlotSettings
 from .plot_fields import *
 from .parameters import *
 from .directories import *
+from .settings import *
