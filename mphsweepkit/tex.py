@@ -1,8 +1,6 @@
 from matplotlib import pyplot as plt
 
-# -------------------------
 # Matplotlib settings
-# -------------------------
 plt.rcParams.update(
     {
         "text.usetex": True,
@@ -15,14 +13,3 @@ plt.rcParams.update(
         "mathtext.bf": "Bitstream Vera Serif:bold",
     }
 )
-
-colors = [
-    "tab:purple",
-    "tab:pink",
-    "tab:blue",
-    "tab:olive",
-    "tab:green",
-    "tab:brown",
-    "tab:red",
-    "tab:orange",
-]

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from pathlib import Path
 
-import matplotlib.patheffects as pe
 from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -32,7 +31,19 @@ class PlotSettings:
     show_style_legend: bool = True
     color_legend_anchor: tuple[float, float] = (1.02, 1)
     style_legend_anchor: tuple[float, float] = (1.02, 0.45)
-    legend_loc: str = "upper left"
+    legend_loc: Literal[
+        "best",
+        "upper right",
+        "upper left",
+        "lower left",
+        "lower right",
+        "right",
+        "center left",
+        "center right",
+        "lower center",
+        "upper center",
+        "center",
+    ] = "upper left"
     use_tight_layout: bool = True
 
 
@@ -302,6 +313,19 @@ class DataPlot:
         """Return display label with optional unit suffix."""
         return label + " [" + unit + "]" if unit else label
 
+    @staticmethod
+    def _apply_text_override(
+        base_label: str,
+        base_unit: str | None,
+        override_label: str | None,
+        override_unit: str | None,
+    ) -> tuple[str, str | None]:
+        """Apply optional label/unit overrides and return effective values."""
+        return (
+            override_label or base_label,
+            base_unit if override_unit is None else override_unit,
+        )
+
     def _prepare_plot_df(self, x_key: Any, y_key: Any, color_key: Any, style_key: Any) -> pd.DataFrame:
         """Return cleaned dataframe used for plotting grouped lines."""
         df = self.combined_df.copy()
@@ -374,7 +398,7 @@ class DataPlot:
                     [0],
                     [0],
                     color="black",
-                    linestyle=style_map[value],
+                    linestyle=cast(Any, style_map[value]),
                     lw=2,
                     label=f"{self._fmt_legend_value(value)}{style_suffix}",
                 )
@@ -413,15 +437,31 @@ class DataPlot:
         x_label, x_unit = self._label_and_unit(x_col)
         y_label, y_unit = self._label_and_unit(y_col)
 
-        x_label = text_overrides.x_label or x_label
-        x_unit = text_overrides.x_unit if text_overrides.x_unit is not None else x_unit
-        y_label = text_overrides.y_label or y_label
-        y_unit = text_overrides.y_unit if text_overrides.y_unit is not None else y_unit
+        x_label, x_unit = self._apply_text_override(
+            x_label,
+            x_unit,
+            text_overrides.x_label,
+            text_overrides.x_unit,
+        )
+        y_label, y_unit = self._apply_text_override(
+            y_label,
+            y_unit,
+            text_overrides.y_label,
+            text_overrides.y_unit,
+        )
 
-        color_title = text_overrides.color_label or color_title
-        color_unit = text_overrides.color_unit if text_overrides.color_unit is not None else color_unit
-        style_title = text_overrides.style_label or style_title
-        style_unit = text_overrides.style_unit if text_overrides.style_unit is not None else style_unit
+        color_title, color_unit = self._apply_text_override(
+            color_title,
+            color_unit,
+            text_overrides.color_label,
+            text_overrides.color_unit,
+        )
+        style_title, style_unit = self._apply_text_override(
+            style_title,
+            style_unit,
+            text_overrides.style_label,
+            text_overrides.style_unit,
+        )
 
         # If filters are provided, plot from a temporary filtered view of this DataPlot.
         source = self.filter_rows(filters) if filters else self
