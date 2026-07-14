@@ -197,7 +197,7 @@ class CascadedSweepModel:
             pass
         self.model.solve(self.study_name)
     
-    def post_process(self, post_processing_exprs: dict[str, dict[str, str]]):
+    def post_process_data(self, post_processing_exprs: dict[str, dict[str, str]]):
         """Perform post-processing and write results to output_data only."""
         if self.input_data is None:
             raise ValueError("Input data is not loaded. Please run 'update_data_from_model' first.")
