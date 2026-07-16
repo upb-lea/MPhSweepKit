@@ -9,6 +9,7 @@ server_dir/
 
 # Files
 examples/studies/ferrite_plate_capacitor
+examples/studies/infinite_ferrite_cross_sections/field_data
 
 # General File Types
 .env

@@ -54,7 +54,7 @@ def load_post_processing_exprs(json_path: str | Path) -> dict[str, dict[str, str
     return data
 
 
-def read_comsol_txt_to_df(filepath: str) -> pd.DataFrame:
+def read_comsol_plot_to_df(filepath: str) -> pd.DataFrame:
     """
     Read a COMSOL-style .txt export into a pandas DataFrame.
 
@@ -85,5 +85,43 @@ def read_comsol_txt_to_df(filepath: str) -> pd.DataFrame:
         names=header_cols,
         engine="python",  # robust with regex separators
     )
+
+    return df
+
+
+def read_comsol_dataset(filename):
+
+    with open(filename) as f:
+        for line in f:
+            if line.startswith("% Dimension:"):
+                dimension = int(line.split(":", 1)[1])
+            elif line.startswith("% Expressions:"):
+                expressions = int(line.split(":", 1)[1])
+            elif line.startswith("% x"):
+                header = line[1:].split()
+
+    coordinates = {
+        1: ["x"],
+        2: ["x", "y"],
+        3: ["x", "y", "z"],
+    }.get(dimension)
+
+    if coordinates is None:
+        raise ValueError("Dimension must be 1, 2, or 3")
+
+    words = header[dimension:]
+    expression_names = []
+    start = 0
+
+    for i, word in enumerate(words):
+        if word == "@" and i + 1 < len(words):
+            expression_names.append(" ".join(words[start:i + 2]))
+            start = i + 2
+
+    if len(expression_names) != expressions:
+        raise ValueError("Could not parse all expression names")
+
+    df = pd.read_csv(filename, sep=r"\s+", comment="%", header=None)
+    df.columns = coordinates + expression_names
 
     return df

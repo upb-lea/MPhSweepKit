@@ -1,5 +1,5 @@
-unit,hor_slit,vert_slit,w,l_r,a_e,matsw.comp1.core,b_mean,freq
-name,um,um,mm,mm,mm,,mT,kHz
+name,hor_slit,vert_slit,w,l_r,a_e,matsw.comp1.core,b_mean,freq
+unit,um,um,mm,mm,mm,,mT,kHz
 group,Geometry Sweep,Geometry Sweep,Geometry Sweep,Geometry Sweep,Geometry Sweep,Material Sweep,Excitation Sweep,Frequency Sweep
 0,0.0,0.0,10.0,0.0,5.0,2.0,25.0,100.0
 1,0.0,0.0,10.0,0.0,5.0,2.0,25.0,200.0

@@ -1,7 +1,7 @@
 """Provides the class to perform a cascaded sweep on a COMSOL model accessed via the MPh API."""
 from __future__ import annotations
 
-from typing import Optional, TypedDict, NotRequired, Any
+from typing import Optional, TypedDict, NotRequired, Any, Literal
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -16,7 +16,6 @@ class PostProcessSpec(TypedDict):
     expression: str
     unit: NotRequired[str]
 
-
 class CascadedSweepModel:
     """A class to work on a COMSOL model with cascaded sweeps."""
 
@@ -28,24 +27,29 @@ class CascadedSweepModel:
         self.show_param_names = show_param_names
 
         # Resolve study node
-        self.study_node = self.model / "studies" / self.study_name
+        self.node_studies = self.model / "studies" / self.study_name
+        self.node_datasets = self.model / "datasets"
+        self.node_exports = self.model / "exports"
 
-        # Collect study children
-        self.sweep_nodes = self.study_node.children()
+        # Collect cascaded sweep structure
+        self.sweep_nodes = self.node_studies.children()
         self.sweep_names = [node.name() for node in self.sweep_nodes]
         self.sweep_types = [node.type() for node in self.sweep_nodes]
         self.print_initialization_summary(show_param_names=self.show_param_names)
 
-        # Model Datasets
-        self.model_datasets = self.model.datasets()
+        # Default dataset name for the solution.
+        self.solution_dataset_name = "Cascaded Sweep Solution"
 
-        # Input containers and metadata maps
+        # Data:
+        #   Input data (sweep parameters) 
+        #   Output data (post-processing results)
         self.input_data: Optional[pd.DataFrame] = None
-
-        # Output containers and metadata maps
         self.output_data: pd.DataFrame = pd.DataFrame()
+        self._update_data_from_model()
 
-        self.update_data_from_model()
+        # Fields:
+        self.dir_data = Path("field_data")
+        self.dir_data.mkdir(parents=True, exist_ok=True)
 
     @property
     def combined_data(self) -> pd.DataFrame:
@@ -116,8 +120,12 @@ class CascadedSweepModel:
             columns=pd.MultiIndex.from_tuples([], names=list(METADATA_ROW_NAMES)),
         )
 
-    def update_data_from_model(self):
-        """Load sweep data from the COMSOL model and build cascaded input dataset."""
+    def _update_data_from_model(self):
+        """
+        Load sweep data from the COMSOL model and (re-)build the cascaded input dataset as pd.DataFrame.
+        
+        This method is called automatically when a CascadedSweepModel is initialized or when sweep data is updated.
+        """
         list_of_sweep_data = [node.properties() for node in self.sweep_nodes]
 
         input_data, unit_map, sweep_map = get_cascaded_dataset(
@@ -149,7 +157,7 @@ class CascadedSweepModel:
         material_values: list[list[float]] | np.ndarray,
         sweep_type: str = "filled"
     ):
-        """Set the data for a specific sweep."""
+        """Set the data for a specific material sweep."""
         if sweep_name not in self.sweep_names:
             raise ValueError(f"Sweep name '{sweep_name}' not found in the model.")
         sweep_index = self.sweep_names.index(sweep_name)
@@ -161,7 +169,7 @@ class CascadedSweepModel:
             sweep_type=sweep_type
         )
 
-        self.update_data_from_model()
+        self._update_data_from_model()
 
     def set_parametric_sweep(
         self,
@@ -184,7 +192,7 @@ class CascadedSweepModel:
             sweep_type=sweep_type,
         )
 
-        self.update_data_from_model()
+        self._update_data_from_model()
 
     def simulate(self, batch_dir: str = "batch_data"):
         """Run the cascaded sweep simulation."""
@@ -196,17 +204,29 @@ class CascadedSweepModel:
         except Exception:
             pass
         self.model.solve(self.study_name)
-    
+
+        # Give the computed dataset a defined name
+        # TODO: instead of renaming the last dataset, catch the actual dataset name 
+        #       from the model and rename it to the desired name
+        # TODO: Check if the dataset already exists and handle it (e.g., rename or overwrite)
+        self._rename_last_dataset(self.solution_dataset_name)
+
+    def _rename_last_dataset(self, new_name: str):
+        """Rename the last dataset in the model."""
+        last_dataset = self.model / "datasets" / self.model.datasets()[-1]
+        last_dataset.rename(new_name)
+
+
     def post_process_data(self, post_processing_exprs: dict[str, dict[str, str]]):
         """Perform post-processing and write results to output_data only."""
         if self.input_data is None:
-            raise ValueError("Input data is not loaded. Please run 'update_data_from_model' first.")
+            raise ValueError("No input data available. Please set up the sweeps and run the simulation first.")
 
         for column_name, spec in post_processing_exprs.items():
             values = self.model.evaluate(
                 expression=spec["expression"],
                 unit=spec["unit"],
-                dataset=self.model_datasets[-1],
+                dataset=self.solution_dataset_name,
             )
             column_key = (
                 column_name,
@@ -215,7 +235,7 @@ class CascadedSweepModel:
             )
             self.output_data.loc[:, column_key] = values
 
-    def clear_output_data(self):
+    def _clear_output_data(self):
         """Drop all computed outputs but keep input_data."""
         self._reset_outputs_to_inputs_index()
 
@@ -236,3 +256,157 @@ class CascadedSweepModel:
         self.output_data.to_csv(target_dir / "output_data.csv", index=True)
 
         print(f"Saved result data to: {target_dir.resolve()}")
+
+    def print_available_selections(self):
+        """
+        Print the available selections in the model.
+        """
+        print("Available selections:")
+        for tag in self.model.java.selection().tags():
+            selection = self.model.java.selection(tag)
+            print(tag, selection.label())
+
+
+    def _get_selection_tag(self, selection_name, selection_type: Literal["dom", "bnd", "pt"] = "dom") -> str:
+        """
+        Get the tag of the selection with the given name.
+        """
+        return next(
+            str(tag)
+            for tag in self.model.java.selection().tags()
+            if self.model.java.selection(str(tag)).label() == selection_name and str(tag).endswith("_" + selection_type)
+        )
+
+    def _duplicate_solution_dataset(self, duplicate_name):
+        """
+        Duplicate a dataset and rename it.
+        """
+        # Get the node of the solution dataset
+        solution_dataset = self.model / "datasets" / self.solution_dataset_name
+
+        # Get the node of the newly created dataset
+        new_dataset = self.node_datasets.create(solution_dataset.type(), name=duplicate_name)
+
+        # Get the solution from the original dataset and set it to the new dataset
+        new_dataset.property("solution", value=solution_dataset.property("solution"))
+
+        return new_dataset
+
+    def create_dataset_selection(self, 
+                                 selection_name: str, 
+                                 selection_type: Literal["dom", "bnd", "pt"] = "dom", 
+                                 selection_dataset_name: str = None):
+        """
+        Create a dataset from a selection.
+        """
+        # Handle default dataset name if not provided
+        if selection_dataset_name is None:
+            selection_dataset_name = f"{selection_name}_{selection_type}"
+
+        # Check if the selection dataset already exists
+        if selection_dataset_name in self.model.datasets():
+            print(f"Dataset '{selection_dataset_name}' already exists.")
+        else:
+            # Get the selection tag from name and type
+            selection_tag = self._get_selection_tag(selection_name, selection_type)
+
+            # Duplicate the solution dataset to create a new dataset for the selection
+            new_dataset = self._duplicate_solution_dataset(selection_dataset_name)
+
+            # Set the selection for the dataset to the selected tag through the Java API
+            new_dataset.java.selection().named(selection_tag)
+            
+            print(f"Creating dataset '{selection_dataset_name}' from selection '{selection_name}' of type '{selection_type}'.")
+
+        print(f"Available datasets: {list(self.model.datasets())}")
+
+    def export_dataset_with_expressions(self, 
+                                        dataset_name: str,
+                                        expressions: list[str],
+                                        descriptions: list[str],
+                                        looplevel: list[list[int]],
+                                        looplevelinput: list[str]):
+        """
+        Export a datasheet with expressions.
+
+        :param dataset_name: Name of the dataset to export.
+        :param expressions: List of expressions to export.
+        :param descriptions: List of descriptions for the expressions.
+        :param looplevel: List of lists specifying the loop levels of the parameter cascode.
+        :param looplevelinput: List of strings specifying the loop level input type for each expression.
+        """
+        # Check if the dataset exists
+        if dataset_name not in self.model.datasets():
+            raise ValueError(f"Dataset '{dataset_name}' does not exist.")
+
+        # Get the dataset node
+        selected_dataset_node = self.model / "datasets" / dataset_name
+        print(f"Dataset to be exported:             '{selected_dataset_node.name()}'")
+
+        # Create an export node for the dataset
+        export_name = f"Expressions on {dataset_name}"
+        if export_name in [node.name() for node in self.node_exports.children()]:
+            print(f"Overwrite existing export node:     '{export_name}'")
+        else:
+            print(f"Creating export node:               '{export_name}'")
+            self.node_exports.create("Data", name=export_name)
+        
+        # Get the export node
+        export_node = self.node_exports / export_name
+
+        # Set the export node properties
+        export_node.property("exporttype", "text")
+        export_node.property("ifexists", "overwrite")
+        export_node.property("data", selected_dataset_node.tag())
+        export_node.property("expr", value=expressions)
+
+        print(f"List of expressions:                {expressions}")
+
+        # TODO: Replace the following with a loop to add all geometries
+        
+        # TODO: A smart selection of the outersonums is needed to fetch the results of the same geometries at once.
+        # outersolnum = 5
+        # innersolnum = 3
+        
+        export_node.property("looplevel", value=looplevel)
+        export_node.property("looplevelinput", value=looplevelinput)
+        export_node.property("descr", value=descriptions)
+
+        outersolnum = export_node.property("outersolnum")[0]
+
+        # Path to the output file for the export
+        path2file = str(self.dir_data.joinpath(f"outer_{outersolnum}.txt").absolute())
+        
+        self.model.export(export_node, file=path2file)
+
+        return export_node
+
+
+    def _looplevel_from_input(self, looplevelinput: list[str]) -> list[list[int]]:
+        """
+        Convert looplevelinput to looplevel.
+
+        :param looplevelinput: List of strings specifying the loop level input type for each expression.
+        :return: List of lists specifying the loop levels of the parameter cascode.
+        """
+        looplevel = []
+        for input_type in looplevelinput:
+            if input_type == "all":
+                looplevel.append([1, 2, 3, 4])  # Example: all levels
+            elif input_type == "manual":
+                looplevel.append([2])  # Example: manual level
+            else:
+                raise ValueError(f"Unknown looplevelinput type: {input_type}")
+        return looplevel
+    
+    
+    # def _filter_dataset_by_geometry(self, dataset_name: str, geometry: dict[str, Any]) -> pd.DataFrame:
+        
+
+
+        # # Export each expression to a separate CSV file
+        # for expr in expressions:
+        #     values = self.model.evaluate(expression=expr, dataset=dataset_name)
+        #     df = pd.DataFrame(values, columns=[expr])
+        #     df.to_csv(self.data_dir / f"{expr.replace('/', '_')}.csv", index=False)
+        #     print(f"Exported expression '{expr}' to '{self.data_dir / f'{expr.replace('/', '_')}.csv'}'.")
