@@ -348,6 +348,7 @@ class CascadedSweepModel:
                                         dataset_name: str,
                                         expressions: list[str],
                                         descriptions: list[str],
+                                        units: list[str],
                                         looplevel: list[list[int]],
                                         looplevelinput: list[str]):
         """
@@ -356,6 +357,7 @@ class CascadedSweepModel:
         :param dataset_name: Name of the dataset to export.
         :param expressions: List of expressions to export.
         :param descriptions: List of descriptions for the expressions.
+        :param units: List of units for the expressions.
         :param looplevel: List of lists specifying the loop levels of the parameter cascode.
         :param looplevelinput: List of strings specifying the loop level input type for each expression.
         """
@@ -381,6 +383,8 @@ class CascadedSweepModel:
         # Get the export node
         export_node = self.node_exports / export_name
 
+        print(export_node.properties())
+
         # Set the export node properties
         export_node.property("exporttype", "text")
         export_node.property("ifexists", "overwrite")
@@ -389,6 +393,7 @@ class CascadedSweepModel:
         export_node.property("looplevel", value=looplevel)
         export_node.property("looplevelinput", value=looplevelinput)
         export_node.property("descr", value=descriptions)
+        export_node.property("unit", value=units)
 
         # Assuming the last level corresponds to geometry
         geometry_no = looplevel[-1][0]  

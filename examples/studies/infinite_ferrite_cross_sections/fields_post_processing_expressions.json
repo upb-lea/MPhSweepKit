@@ -1,0 +1,12 @@
+{
+    "norm_b": {
+        "expression": "mf.normB",
+        "unit": "T",
+        "label": "Magnetic Flux Density"
+    },
+    "norm_e": {
+        "expression": "mf.normE",
+        "unit": "V/m",
+        "label": "Electric Field"
+    }
+}

@@ -4,7 +4,9 @@ import pandas as pd
 from typing import Any
 
 
-def load_post_processing_exprs(json_path: str | Path) -> dict[str, dict[str, str]]:
+def load_post_processing_exprs(
+    json_path: str | Path, print_info: bool = False
+) -> dict[str, dict[str, str]]:
     """
     Load post-processing expressions from a JSON file.
 
@@ -12,6 +14,9 @@ def load_post_processing_exprs(json_path: str | Path) -> dict[str, dict[str, str
     ----------
     json_path : str | Path
         Path to the JSON file.
+    print_info : bool, optional
+        If True, print info about the resolved file path and a formatted
+        preview of the loaded JSON content, by default False.
 
     Returns
     -------
@@ -30,10 +35,15 @@ def load_post_processing_exprs(json_path: str | Path) -> dict[str, dict[str, str
         If the JSON structure is invalid.
     """
     path = Path(json_path)
-    print(path)
+    if print_info:
+        print(f"Loading post-processing expressions from: {path.resolve()}")
 
     with path.open("r", encoding="utf-8") as f:
         data: Any = json.load(f)
+
+    if print_info:
+        print("Loaded post-processing expressions:")
+        print(json.dumps(data, indent=2, ensure_ascii=False))
 
     if not isinstance(data, dict):
         raise ValueError("Top-level JSON must be an object/dict.")
