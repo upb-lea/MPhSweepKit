@@ -43,16 +43,18 @@ class CascadedSweepModel:
         # Default dataset name for the solution.
         self.solution_dataset_name = "Cascaded Sweep Solution"
 
-        # Data:
+        # Global Data:
         #   Input data (sweep parameters) 
         #   Output data (post-processing results)
+        self.dir_global_data = Path("global_data")
+        self.dir_global_data.mkdir(parents=True, exist_ok=True)
         self.input_data: Optional[pd.DataFrame] = None
         self.output_data: pd.DataFrame = pd.DataFrame()
         self._update_data_from_model()
 
-        # Fields:
-        self.dir_data = Path("field_data")
-        self.dir_data.mkdir(parents=True, exist_ok=True)
+        # Field Data:
+        self.dir_field_data = Path("field_data")
+        self.dir_field_data.mkdir(parents=True, exist_ok=True)
 
     @property
     def combined_data(self) -> pd.DataFrame:
@@ -263,7 +265,7 @@ class CascadedSweepModel:
         """Drop all computed outputs but keep input_data."""
         self._reset_outputs_to_inputs_index()
 
-    def save_result_data(self, folder: str = "result_data"):
+    def save_global_data(self):
         """Save input/output dataframes to disk.
 
         Folder structure:
@@ -271,7 +273,7 @@ class CascadedSweepModel:
                 input_data.csv
                 output_data.csv
         """
-        target_dir = Path(folder)
+        target_dir = Path(self.dir_global_data)
         target_dir.mkdir(parents=True, exist_ok=True)
 
         # Save tabular data
@@ -399,7 +401,7 @@ class CascadedSweepModel:
         geometry_no = looplevel[-1][0]  
 
         # Path to the output file for the export
-        path2file = str(self.dir_data.joinpath(f"geometry_{geometry_no}.txt").absolute())
+        path2file = str(self.dir_field_data.joinpath(f"geometry_{geometry_no}.txt").absolute())
         
         self.model.export(export_node, file=path2file)
 

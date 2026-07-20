@@ -84,8 +84,7 @@ class DataPlot:
     @classmethod
     def from_result_folder(
         cls,
-        folder: str | Path = "result_data",
-        *,
+        folder: str | Path,
         index_col: int | str | None = 0,
     ) -> "DataPlot":
         """Load result tables from a result-data folder."""
