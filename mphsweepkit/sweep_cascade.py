@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from mphsweepkit.sweep_helpers import get_parametric_sweep_data, get_material_sweep_data, get_frequency_sweep_data
 
-ALLOWED_SWEEP_TYPES = {"BatchSweep", "MaterialSweep", "Parametric", "Frequency"}
+ALLOWED_SWEEP_TYPES = {"BatchSweep", "MaterialSweep", "Parametric", "Frequency", "CoilCurrentCalculation"}
 
 
 def get_cascaded_dataset(
@@ -32,7 +32,10 @@ def get_cascaded_dataset(
     for raw_data, sweep_type, sweep_name in zip(
         list_of_sweep_data, list_of_sweep_types, list_of_sweep_names
     ):
-        if sweep_type == "Frequency":
+        if sweep_type == "CoilCurrentCalculation":
+            # The CoilCurrentCalculation sweep type does not add any additional parameters.
+            continue
+        elif sweep_type == "Frequency":
             sweep_data = get_frequency_sweep_data(raw_data)
             level_records, freq_unit = _expand_frequency_sweep(sweep_data)
             expanded_levels.append(level_records)

@@ -35,6 +35,7 @@ class CascadedSweepModel:
         self.sweep_loop_nodes = self.node_studies.children()
         self.sweep_loop_levels = [node.name() for node in self.sweep_loop_nodes]
         self.sweep_loop_types = [node.type() for node in self.sweep_loop_nodes]
+        print(self.sweep_loop_types)
         self.sweep_loop_lengths = [self._get_loop_length(node) for node in self.sweep_loop_nodes]
 
         # self.loop_lengths = 
@@ -67,6 +68,9 @@ class CascadedSweepModel:
     def _get_loop_length(node):
         if node.type() == "Frequency":
             return len(node.property("plist"))
+        elif node.type() == "CoilCurrentCalculation":
+            # The CoilCurrentCalculation sweep type does not add any additional loops.
+            return 1 
         else:
             arr = node.property("plistarr")
             if node.property("sweeptype") == "sparse":

@@ -8,7 +8,7 @@ batch_data/
 server_dir/
 
 # Files
-examples/studies/ferrite_plate_capacitor
+examples/studies/ferrite_plate_capacitor/field_data
 examples/studies/infinite_ferrite_cross_sections/field_data
 
 # General File Types
