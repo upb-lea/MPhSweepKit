@@ -111,11 +111,28 @@ class DataPlot:
         )
 
     @staticmethod
-    def _load_csv(path: Path, index_col: int | str | None = 0) -> pd.DataFrame:
-        """Load CSV or return empty dataframe if missing."""
+    def _parse_complex(value):
+        if not isinstance(value, str) or "j" not in value.lower():
+            return value
+
+        try:
+            return complex(value.strip())
+        except ValueError:
+            return value
+
+
+    @classmethod
+    def _load_csv(
+        cls,
+        path: Path,
+        index_col: int | str | None = 0,
+    ) -> pd.DataFrame:
+        """Load CSV, parsing complex values, or return an empty dataframe."""
         if not path.exists():
             return pd.DataFrame()
-        return pd.read_csv(path, index_col=index_col)
+
+        df = pd.read_csv(path, index_col=index_col)
+        return df.map(cls._parse_complex)
 
     def _build_combined_df(self) -> pd.DataFrame:
         """Join input and output tables on index."""
