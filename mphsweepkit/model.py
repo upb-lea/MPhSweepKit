@@ -32,9 +32,12 @@ class CascadedSweepModel:
         self.node_exports = self.model / "exports"
 
         # Collect cascaded sweep structure
-        self.sweep_nodes = self.node_studies.children()
-        self.sweep_names = [node.name() for node in self.sweep_nodes]
-        self.sweep_types = [node.type() for node in self.sweep_nodes]
+        self.sweep_loop_nodes = self.node_studies.children()
+        self.sweep_loop_levels = [node.name() for node in self.sweep_loop_nodes]
+        self.sweep_loop_types = [node.type() for node in self.sweep_loop_nodes]
+        self.sweep_loop_lengths = [self._get_loop_length(node) for node in self.sweep_loop_nodes]
+
+        # self.loop_lengths = 
         self.print_initialization_summary(show_param_names=self.show_param_names)
 
         # Default dataset name for the solution.
@@ -57,6 +60,20 @@ class CascadedSweepModel:
         if self.input_data is None:
             return pd.DataFrame()
         return self.input_data.join(self.output_data, how="left")
+
+    @staticmethod
+    def _get_loop_length(node):
+        if node.type() == "Frequency":
+            return len(node.property("plist"))
+        else:
+            arr = node.property("plistarr")
+            if node.property("sweeptype") == "sparse":
+                return arr.shape[1]
+            else:
+                looplength = 1
+                for row in arr:
+                    looplength *= len(row)
+                return looplength
 
     @staticmethod
     def _build_multiindex_columns(
@@ -87,7 +104,7 @@ class CascadedSweepModel:
         print(f"Study name: {self.study_name}")
         print("Sweep Structure:")
         spaces = "  "
-        for node, name, sweep_type in zip(self.sweep_nodes, self.sweep_names, self.sweep_types):
+        for node, name, sweep_type in zip(self.sweep_loop_nodes, self.sweep_loop_levels, self.sweep_loop_types):
             spaces += "  "
             line = f"{spaces}- {name} ({sweep_type})"
             if show_param_names:
@@ -126,20 +143,27 @@ class CascadedSweepModel:
         
         This method is called automatically when a CascadedSweepModel is initialized or when sweep data is updated.
         """
-        list_of_sweep_data = [node.properties() for node in self.sweep_nodes]
+        list_of_sweep_properties = [node.properties() for node in self.sweep_loop_nodes]
 
         input_data, unit_map, sweep_map = get_cascaded_dataset(
-            list_of_sweep_data=list_of_sweep_data,
-            list_of_sweep_types=self.sweep_types,
-            list_of_sweep_names=self.sweep_names,
+            list_of_sweep_data=list_of_sweep_properties,
+            list_of_sweep_types=self.sweep_loop_types,
+            list_of_sweep_names=self.sweep_loop_levels,
         )
 
+        # Create a DataFrame with the cascaded sweep data and metadata in the columns.
         self.input_data = input_data
         self.input_data.columns = self._build_multiindex_columns(
             names=[str(col) for col in self.input_data.columns],
             unit_map=unit_map,
             group_map=sweep_map,
         )
+
+        # Print loop lengths
+        self.sweep_loop_lengths = [self._get_loop_length(node) for node in self.sweep_loop_nodes]
+        
+        print(f"Loop names: {self.sweep_loop_levels}")
+        print(f"Loop lengths: {self.sweep_loop_lengths}")
 
         # Input table changed -> reset outputs to aligned empty frame
         self._reset_outputs_to_inputs_index()
@@ -158,12 +182,12 @@ class CascadedSweepModel:
         sweep_type: str = "filled"
     ):
         """Set the data for a specific material sweep."""
-        if sweep_name not in self.sweep_names:
+        if sweep_name not in self.sweep_loop_levels:
             raise ValueError(f"Sweep name '{sweep_name}' not found in the model.")
-        sweep_index = self.sweep_names.index(sweep_name)
+        sweep_index = self.sweep_loop_levels.index(sweep_name)
 
         set_material_sweep(
-            sweep_node=self.sweep_nodes[sweep_index],
+            sweep_node=self.sweep_loop_nodes[sweep_index],
             material_names=material_names,
             material_values=np.asarray(material_values, dtype=np.float64),
             sweep_type=sweep_type
@@ -180,12 +204,12 @@ class CascadedSweepModel:
         sweep_type: str = "sparse",
     ):
         """Set the data for a specific parametric sweep."""
-        if sweep_name not in self.sweep_names:
+        if sweep_name not in self.sweep_loop_levels:
             raise ValueError(f"Sweep name '{sweep_name}' not found in the model.")
-        sweep_index = self.sweep_names.index(sweep_name)
+        sweep_index = self.sweep_loop_levels.index(sweep_name)
 
         set_parametric_sweep(
-            sweep_node=self.sweep_nodes[sweep_index],
+            sweep_node=self.sweep_loop_nodes[sweep_index],
             param_names=param_names,
             param_units=param_units,
             param_values=np.asarray(param_values, dtype=np.float64),
@@ -196,8 +220,8 @@ class CascadedSweepModel:
 
     def simulate(self, batch_dir: str = "batch_data"):
         """Run the cascaded sweep simulation."""
-        if self.sweep_types[0] == "BatchSweep":
-            set_batch_directory(self.sweep_nodes[0], directory_name=batch_dir)
+        if self.sweep_loop_types[0] == "BatchSweep":
+            set_batch_directory(self.sweep_loop_nodes[0], directory_name=batch_dir)
 
         try:
             self.model.build()   
@@ -351,6 +375,9 @@ class CascadedSweepModel:
             print(f"Creating export node:               '{export_name}'")
             self.node_exports.create("Data", name=export_name)
         
+        # The expressions are used in the export node
+        print(f"List of expressions:                {expressions}")
+        
         # Get the export node
         export_node = self.node_exports / export_name
 
@@ -359,23 +386,15 @@ class CascadedSweepModel:
         export_node.property("ifexists", "overwrite")
         export_node.property("data", selected_dataset_node.tag())
         export_node.property("expr", value=expressions)
-
-        print(f"List of expressions:                {expressions}")
-
-        # TODO: Replace the following with a loop to add all geometries
-        
-        # TODO: A smart selection of the outersonums is needed to fetch the results of the same geometries at once.
-        # outersolnum = 5
-        # innersolnum = 3
-        
         export_node.property("looplevel", value=looplevel)
         export_node.property("looplevelinput", value=looplevelinput)
         export_node.property("descr", value=descriptions)
 
-        outersolnum = export_node.property("outersolnum")[0]
+        # Assuming the last level corresponds to geometry
+        geometry_no = looplevel[-1][0]  
 
         # Path to the output file for the export
-        path2file = str(self.dir_data.joinpath(f"outer_{outersolnum}.txt").absolute())
+        path2file = str(self.dir_data.joinpath(f"geometry_{geometry_no}.txt").absolute())
         
         self.model.export(export_node, file=path2file)
 
@@ -400,13 +419,73 @@ class CascadedSweepModel:
         return looplevel
     
     
-    # def _filter_dataset_by_geometry(self, dataset_name: str, geometry: dict[str, Any]) -> pd.DataFrame:
-        
+    def get_looplevel_array(self):
+        """Create loop-level arrays, excluding sweeps of length <= 1."""
+        return [
+            list(range(1, length + 1))
+            for length in self.sweep_loop_lengths
+            if length > 1
+        ]
 
 
-        # # Export each expression to a separate CSV file
-        # for expr in expressions:
-        #     values = self.model.evaluate(expression=expr, dataset=dataset_name)
-        #     df = pd.DataFrame(values, columns=[expr])
-        #     df.to_csv(self.data_dir / f"{expr.replace('/', '_')}.csv", index=False)
-        #     print(f"Exported expression '{expr}' to '{self.data_dir / f'{expr.replace('/', '_')}.csv'}'.")
+    def parse_looplevels_to_comsol(self, cls):
+        """
+        Validate the sweep configuration and return loop levels in
+        COMSOL order (inside to outside).
+        """
+        loop_names = self.sweep_loop_levels
+        loop_lengths = self.sweep_loop_lengths
+
+        if len(loop_names) != len(loop_lengths):
+            raise ValueError(
+                "Sweep loop levels and lengths must have the same length."
+            )
+
+        normalized_names = [
+            name.strip().casefold()
+            for name in loop_names
+        ]
+
+        if not normalized_names or normalized_names[0] != "geometry sweep":
+            raise ValueError(
+                "The first loop level must be 'Geometry Sweep'."
+            )
+
+        if "geometry sweep" in normalized_names[1:]:
+            raise ValueError(
+                "'Geometry Sweep' may only occur as the first loop level."
+            )
+
+        return self.get_looplevel_array()[::-1]
+
+    @staticmethod
+    def flatten_geometry_level(looplevel_array):
+        """
+        Split the final geometry level into one configuration per geometry.
+
+        Example:
+            [..., [1, 2, 3]]
+
+        becomes:
+            [
+                [..., [1]],
+                [..., [2]],
+                [..., [3]],
+            ]
+        """
+        if not looplevel_array:
+            return []
+
+        geometry_levels = looplevel_array[-1]
+        other_levels = looplevel_array[:-1]
+
+        return [
+            [level.copy() for level in other_levels] + [[geometry]]
+            for geometry in geometry_levels
+        ]
+    
+    def get_comsol_looplevels(self):
+        """Run the complete conversion."""
+        looplevel_array = self.parse_looplevels_to_comsol(self)
+        return self.flatten_geometry_level(looplevel_array)
+    
