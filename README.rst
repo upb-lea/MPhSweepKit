@@ -6,41 +6,65 @@ MPhSweepTools is a Python-based wrapper around the COMSOL API provided by the `M
 Installation
 -------------------
 
+
+Clone the repository and install the package locally using pip:
+
 ::
 
     pip install -e .
 
+
+Currently a workaround in the MPh package is required. Replace in the "node.py":
+
+::
+
+    ...
+    elif datatype == 'DoubleRowMatrix':
+        value = java.getDoubleMatrix(name)
+        if len(value) == 0:
+            rows = []
+        elif len(value) == 1:
+            rows = [array(value[0])]
+        elif len(value) == 2:
+            rows = [array(value[0]), array(value[1])]
+        else:
+            error = 'Cannot convert double-row matrix with more than two rows.'
+            log.error(error)
+            raise TypeError(error)
+        return array(rows, dtype=object)
+    ...
+  
+by
+
+::
+
+    ...
+    elif datatype == 'DoubleRowMatrix':
+        value = java.getDoubleMatrix(name)
+        if len(value) == 0:
+            rows = []
+        else:
+            rows = [array(row) for row in value]
+        return array(rows, dtype=object)
+    ...
+
+.
+
 Core API
 -------------------
 
-- ``CascadedSweepModel(model, study_name, show_param_names=False)``
+- ``CascadedSweepModel(model, study_name)``
 - ``set_material_sweep(...)``
 - ``set_parametric_sweep(...)``
-- ``simulate(batch_dir="batch_data")``
+- ``simulate()``
 - ``post_process_data(post_processing_exprs)``
-- ``save_global_data()``  -> writes ``global_data/input_data.csv`` and ``global_data/output_data.csv``
+- ``save_global_data()``  -> writes ``.../input_data.csv`` and ``.../output_data.csv``
 - ``create_dataset_selection(...)``
-- ``export_dataset_with_expressions(...)``
-- ``get_comsol_looplevels()``
+- ``export_dataset_with_expressions(...)`` -> exports field data directly calculated on a (sub-)dataset selection, e.g. a geometry or a surface
+- ``get_comsol_looplevels()`` -> walks through the COMSOL model tree of a cascaded sweep
 
-Scalar workflow (scripts 1-3)
+Typical workflow 
 -------------------
 
-From ``examples/studies/infinite_ferrite_cross_sections``:
+See ``examples/studies/infinite_ferrite_cross_sections`` scripts 1-5.
 
-1. Build and configure sweeps
-2. ``simulate(...)``
-3. ``post_process_data(load_post_processing_exprs("global_post_processing_expressions.json"))``
-4. ``save_global_data()``
-5. ``DataPlot.from_result_folder("global_data")``
-
-Field workflow (scripts 4-5)
--------------------
-
-From ``examples/studies/infinite_ferrite_cross_sections``:
-
-1. ``create_dataset_selection(...)``
-2. Load ``fields_post_processing_expressions.json`` via ``load_post_processing_exprs(...)``
-3. Loop ``for looplevel in csm.get_comsol_looplevels():`` and call ``export_dataset_with_expressions(...)``
-4. Read with ``read_comsol_dataset("field_data/geometry_1.txt")``
-5. Plot with ``PlotField(df).plot_field(...)``
