@@ -442,42 +442,23 @@ class DataPlot:
         settings = settings or PlotSettings()
         text_overrides = text_overrides or PlotTextOverrides()
 
+        # Assign keys for the requested columns
         x_key = self._resolve_column_key(x_col)
         y_key = self._resolve_column_key(y_col)
         color_key = self._resolve_column_key(color_col)
         style_key = self._resolve_column_key(style_col)
 
+        # Assign titles and units for legends and overrides, if provided
         color_title, color_unit = self._legend_title_and_unit(color_col, color_key)
         style_title, style_unit = self._legend_title_and_unit(style_col, style_key)
+        color_title, color_unit = self._apply_text_override(color_title, color_unit, text_overrides.color_label, text_overrides.color_unit)
+        style_title, style_unit = self._apply_text_override(style_title, style_unit, text_overrides.style_label, text_overrides.style_unit)
 
+        # Assign axis labels and units for x/y axes and overrides, if provided
         x_label, x_unit = self._label_and_unit(x_col)
         y_label, y_unit = self._label_and_unit(y_col)
-
-        x_label, x_unit = self._apply_text_override(
-            x_label,
-            x_unit,
-            text_overrides.x_label,
-            text_overrides.x_unit,
-        )
-        y_label, y_unit = self._apply_text_override(
-            y_label,
-            y_unit,
-            text_overrides.y_label,
-            text_overrides.y_unit,
-        )
-
-        color_title, color_unit = self._apply_text_override(
-            color_title,
-            color_unit,
-            text_overrides.color_label,
-            text_overrides.color_unit,
-        )
-        style_title, style_unit = self._apply_text_override(
-            style_title,
-            style_unit,
-            text_overrides.style_label,
-            text_overrides.style_unit,
-        )
+        x_label, x_unit = self._apply_text_override( x_label, x_unit, text_overrides.x_label, text_overrides.x_unit)
+        y_label, y_unit = self._apply_text_override( y_label, y_unit, text_overrides.y_label, text_overrides.y_unit)
 
         # If filters are provided, plot from a temporary filtered view of this DataPlot.
         source = self.filter_rows(filters) if filters else self
@@ -485,13 +466,10 @@ class DataPlot:
         if df.empty:
             return
 
-        color_values, style_values, color_map, style_map = self._build_style_maps(
-            df,
-            color_key,
-            style_key,
-            settings,
-        )
+        # Build color and style maps for the unique values in the filtered dataframe.
+        color_values, style_values, color_map, style_map = self._build_style_maps(df, color_key, style_key, settings)
 
+        # Plot each group of (color, style) values as a separate line on the axis.
         for (cval, sval), g in df.groupby([color_key, style_key], sort=True):
             g = g.sort_values(x_key)
             ax.plot(
@@ -504,6 +482,7 @@ class DataPlot:
                 linestyle=style_map[sval],
             )
 
+        # Configure axis scales, labels, title, and grid based on settings and overrides.
         ax.set_xscale(settings.x_scale)
         ax.set_yscale(settings.y_scale)
         ax.set_xlabel(self._format_label_with_unit(x_label, x_unit))
@@ -512,6 +491,7 @@ class DataPlot:
         if settings.show_grid:
             ax.grid(True, which=settings.grid_which, alpha=settings.grid_alpha)
 
+        # Add legends for color and style, if enabled in settings.
         self._add_legends(
             ax=ax,
             color_values=color_values,
@@ -525,5 +505,6 @@ class DataPlot:
             settings=settings,
         )
 
+        # Apply tight layout to the figure if enabled in settings.
         if settings.use_tight_layout:
             plt.tight_layout()
