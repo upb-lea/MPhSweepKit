@@ -1,16 +1,14 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 from pathlib import Path
-
+import numpy as np
+import pandas as pd
 from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-import numpy as np
-import pandas as pd
 
-from .meta_data import METADATA_ROW_NAMES
+# Import of meta data
+from .meta_names import METADATA_ROW_NAMES
 
 
 @dataclass(slots=True)

@@ -1,16 +1,17 @@
 """Provides the class to perform a cascaded sweep on a COMSOL model accessed via the MPh API."""
-from __future__ import annotations
-
 from typing import Optional, TypedDict, NotRequired, Any, Literal
 from pathlib import Path
 import pandas as pd
 import numpy as np
 
+# Import of meta data 
+from mphsweepkit.meta_dir import set_batch_directory
+from .meta_names import METADATA_ROW_NAMES
+
+# Imports from the sweep_... modules
 from mphsweepkit.sweep_cascade import get_cascaded_dataset
-from mphsweepkit.directories import set_batch_directory
 from mphsweepkit.sweep_helpers import set_material_sweep, set_parametric_sweep
 
-from .meta_data import METADATA_ROW_NAMES
 
 class PostProcessSpec(TypedDict):
     expression: str
@@ -325,7 +326,7 @@ class CascadedSweepModel:
     def create_dataset_selection(self, 
                                  selection_name: str, 
                                  selection_type: Literal["dom", "bnd", "pt"] = "dom", 
-                                 selection_dataset_name: str = None):
+                                 selection_dataset_name: str | None = None):
         """
         Create a dataset from a selection.
         """

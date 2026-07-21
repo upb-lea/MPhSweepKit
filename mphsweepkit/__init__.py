@@ -1,12 +1,11 @@
 """Initialize the mphsweepkit package."""
 
-from .model import CascadedSweepModel
+from .meta_dir import *
+from .meta_tex import *
+from .process_data import DataPlot, PlotSettings
+from .process_derive import *
+from .process_fields import *
+from .process_helpers import *
+from .sweep import CascadedSweepModel
 from .sweep_cascade import *
 from .sweep_helpers import *
-from .postprocessing import *
-from .plot_data import DataPlot, PlotSettings
-from .plot_fields import *
-from .parameters import *
-from .directories import *
-from .tex import *
-from .derive import *

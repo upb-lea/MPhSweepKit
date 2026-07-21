@@ -2,7 +2,8 @@
 import numpy as np
 import pandas as pd
 
-from .meta_data import METADATA_ROW_NAMES
+# Import of meta data
+from .meta_names import METADATA_ROW_NAMES
 
 
 def _as_complex_series(df, source_col):
