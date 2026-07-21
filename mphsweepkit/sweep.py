@@ -255,7 +255,7 @@ class CascadedSweepModel:
 
 
     # Post processing of global data
-    def post_process_data(self, post_processing_exprs: dict[str, dict[str, str]]):
+    def post_process_globals(self, post_processing_exprs: dict[str, dict[str, str]]):
         """Perform post-processing and write results to output_data only."""
         if self.input_data is None:
             raise ValueError("No input data available. Please set up the sweeps and run the simulation first.")
@@ -354,8 +354,6 @@ class CascadedSweepModel:
             
             print(f"Creating dataset '{selection_dataset_name}' from selection '{selection_name}' of type '{selection_type}'.")
 
-        print(f"Available datasets: {list(self.model.datasets())}")
-
     def export_dataset_with_expressions(self, 
                                         dataset_name: str,
                                         expressions: list[str],
@@ -395,7 +393,7 @@ class CascadedSweepModel:
         # Get the export node
         export_node = self.node_exports / export_name
 
-        print(export_node.properties())
+        # print(export_node.properties())  # uncomment for debugging
 
         # Set the export node properties
         export_node.property("exporttype", "text")
