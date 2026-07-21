@@ -3,14 +3,14 @@ from typing import Optional, TypedDict, NotRequired, Any, Literal
 from pathlib import Path
 import pandas as pd
 import numpy as np
+import mph
 
 # Import of meta data 
-from mphsweepkit.meta_dir import set_batch_directory
 from .meta_names import METADATA_ROW_NAMES
 
 # Imports from the sweep_... modules
 from mphsweepkit.sweep_cascade import get_cascaded_dataset
-from mphsweepkit.sweep_helpers import set_material_sweep, set_parametric_sweep
+from mphsweepkit.sweep_get_set import set_material_sweep, set_parametric_sweep
 
 
 class PostProcessSpec(TypedDict):
@@ -21,7 +21,6 @@ class CascadedSweepModel:
     """A class to work on a COMSOL model with cascaded sweeps."""
 
     
-
     def __init__(self, model: Any, study_name: str, show_param_names: bool = False):
         self.model = model
         self.study_name = study_name
@@ -36,27 +35,30 @@ class CascadedSweepModel:
         self.sweep_loop_nodes = self.node_studies.children()
         self.sweep_loop_levels = [node.name() for node in self.sweep_loop_nodes]
         self.sweep_loop_types = [node.type() for node in self.sweep_loop_nodes]
-        print(self.sweep_loop_types)
         self.sweep_loop_lengths = [self._get_loop_length(node) for node in self.sweep_loop_nodes]
-
-        # self.loop_lengths = 
         self.print_initialization_summary(show_param_names=self.show_param_names)
 
-        # Default dataset name for the solution.
-        self.solution_dataset_name = "Cascaded Sweep Solution"
 
-        # Global Data:
-        #   Input data (sweep parameters) 
-        #   Output data (post-processing results)
+        # Set...
+        # ... default dataset name for the solution.
+        self.solution_dataset_name = "Cascaded Sweep Solution"
+        # ... directories for global data (input/output tables)
         self.dir_global_data = Path("global_data")
         self.dir_global_data.mkdir(parents=True, exist_ok=True)
+        # ... directories for field data
+        self.dir_field_data = Path("field_data")
+        self.dir_field_data.mkdir(parents=True, exist_ok=True)
+        # ... directories for batch directory
+        self.dir_batch_data = Path("batch_data")
+        self.dir_batch_data.mkdir(parents=True, exist_ok=True)
+
+        # From the COMSOL-model, update global ... 
+        # ... input data (sweep parameters) 
+        # ... output data (post-processing results -> initially empty)
         self.input_data: Optional[pd.DataFrame] = None
         self.output_data: pd.DataFrame = pd.DataFrame()
         self._update_data_from_model()
 
-        # Field Data:
-        self.dir_field_data = Path("field_data")
-        self.dir_field_data.mkdir(parents=True, exist_ok=True)
 
     @property
     def combined_data(self) -> pd.DataFrame:
@@ -225,10 +227,14 @@ class CascadedSweepModel:
 
         self._update_data_from_model()
 
-    def simulate(self, batch_dir: str = "batch_data"):
+    # Simulation
+    def simulate(self):
         """Run the cascaded sweep simulation."""
+        
         if self.sweep_loop_types[0] == "BatchSweep":
-            set_batch_directory(self.sweep_loop_nodes[0], directory_name=batch_dir)
+            absolute_path_to_batch_dir = Path(self.dir_batch_data).absolute()
+            self.sweep_loop_nodes[0].property("batchdir", str(absolute_path_to_batch_dir))
+            print(f"Batch directory for the geometric sweep set to: {absolute_path_to_batch_dir}")
 
         try:
             self.model.build()   
@@ -248,6 +254,7 @@ class CascadedSweepModel:
         last_dataset.rename(new_name)
 
 
+    # Post processing of global data
     def post_process_data(self, post_processing_exprs: dict[str, dict[str, str]]):
         """Perform post-processing and write results to output_data only."""
         if self.input_data is None:
@@ -265,10 +272,6 @@ class CascadedSweepModel:
                 "post-processing"
             )
             self.output_data.loc[:, column_key] = values
-
-    def _clear_output_data(self):
-        """Drop all computed outputs but keep input_data."""
-        self._reset_outputs_to_inputs_index()
 
     def save_global_data(self):
         """Save input/output dataframes to disk.
@@ -288,6 +291,8 @@ class CascadedSweepModel:
 
         print(f"Saved result data to: {target_dir.resolve()}")
 
+
+    # Working with selections and datasets
     def print_available_selections(self):
         """
         Print the available selections in the model.

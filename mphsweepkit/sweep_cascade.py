@@ -2,9 +2,12 @@ import itertools
 from typing import Any
 import numpy as np
 import pandas as pd
-from mphsweepkit.sweep_helpers import get_parametric_sweep_data, get_material_sweep_data, get_frequency_sweep_data
 
-ALLOWED_SWEEP_TYPES = {"BatchSweep", "MaterialSweep", "Parametric", "Frequency", "CoilCurrentCalculation"}
+# Import of meta data
+from .meta_names import ALLOWED_SWEEP_TYPES
+
+# Import from helper module
+from mphsweepkit.sweep_get_set import get_parametric_sweep_data, get_material_sweep_data, get_frequency_sweep_data
 
 
 def get_cascaded_dataset(
