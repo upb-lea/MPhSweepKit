@@ -6,7 +6,7 @@ import numpy as np
 import mph
 
 # Import of meta data 
-from .meta_names import METADATA_ROW_NAMES
+from .meta_names import METADATA_ROW_NAMES, ALLOWED_SWEEP_TYPES
 
 # Imports from the sweep_... modules
 from mphsweepkit.sweep_cascade import get_cascaded_dataset
@@ -155,6 +155,7 @@ class CascadedSweepModel:
         list_of_sweep_properties = [node.properties() for node in self.sweep_loop_nodes]
 
         input_data, unit_map, sweep_map = get_cascaded_dataset(
+            allowed_sweep_types=ALLOWED_SWEEP_TYPES,
             list_of_sweep_data=list_of_sweep_properties,
             list_of_sweep_types=self.sweep_loop_types,
             list_of_sweep_names=self.sweep_loop_levels,

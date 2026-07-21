@@ -3,14 +3,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-# Import of meta data
-from .meta_names import ALLOWED_SWEEP_TYPES
-
 # Import from helper module
 from mphsweepkit.sweep_get_set import get_parametric_sweep_data, get_material_sweep_data, get_frequency_sweep_data
 
 
 def get_cascaded_dataset(
+    allowed_sweep_types: set[str],
     list_of_sweep_data: list[dict],
     list_of_sweep_types: list[str | None],
     list_of_sweep_names: list[str],
@@ -18,6 +16,7 @@ def get_cascaded_dataset(
     """
     Build a cascaded dataset for an arbitrary number of sweep loops.
 
+    :param allowed_sweep_types: Set of allowed sweep types.
     :param list_of_sweep_data: List of sweep property dictionaries, one per sweep level.
     :param list_of_sweep_types: List of sweep types corresponding to each sweep level.
     :param list_of_sweep_names: List of sweep names corresponding to each sweep level.
@@ -26,7 +25,7 @@ def get_cascaded_dataset(
         - units_map: {parameter_name: unit}
         - sweep_map: {parameter_name: sweep_name}
     """
-    _validate_inputs(list_of_sweep_data, list_of_sweep_types, list_of_sweep_names)
+    _validate_inputs(allowed_sweep_types, list_of_sweep_data, list_of_sweep_types, list_of_sweep_names)
 
     units_map: dict[str, str | None] = {}
     sweep_map: dict[str, str | None] = {}
@@ -65,6 +64,7 @@ def get_cascaded_dataset(
 # Helpers
 # ============================================================
 def _validate_inputs(
+    allowed_sweep_types: set[str],
     list_of_sweep_data: list[dict],
     list_of_sweep_types: list[str | None],
     list_of_sweep_names: list[str],
@@ -74,9 +74,9 @@ def _validate_inputs(
     if len(list_of_sweep_data) != len(list_of_sweep_names):
         raise ValueError("list_of_sweep_data and list_of_sweep_names must have the same length.")
 
-    invalid = [t for t in list_of_sweep_types if t not in ALLOWED_SWEEP_TYPES]
+    invalid = [t for t in list_of_sweep_types if t not in allowed_sweep_types]
     if invalid:
-        raise ValueError(f"Invalid sweep types: {invalid}. Allowed: {sorted(ALLOWED_SWEEP_TYPES)}")
+        raise ValueError(f"Invalid sweep types: {invalid}. Allowed: {sorted(allowed_sweep_types)}")
 
 
 def _normalize_unit(unit: Any) -> str | None:
