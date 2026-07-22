@@ -101,6 +101,10 @@ def read_comsol_plot_to_df(filepath: str) -> pd.DataFrame:
 
 def read_comsol_dataset(filename):
 
+    dimension = None
+    expressions = None
+    header = None
+
     with open(filename) as f:
         for line in f:
             if line.startswith("% Dimension:"):
@@ -110,28 +114,33 @@ def read_comsol_dataset(filename):
             elif line.startswith("% x"):
                 header = line[1:].split()
 
-    coordinates = {
-        1: ["x"],
-        2: ["x", "y"],
-        3: ["x", "y", "z"],
-    }.get(dimension)
+    if dimension is int and expressions is int and header is list:
 
-    if coordinates is None:
-        raise ValueError("Dimension must be 1, 2, or 3")
+        coordinates = {
+            1: ["x"],
+            2: ["x", "y"],
+            3: ["x", "y", "z"],
+        }.get(dimension)
 
-    words = header[dimension:]
-    expression_names = []
-    start = 0
+        if coordinates is None:
+            raise ValueError("Dimension must be 1, 2, or 3")
 
-    for i, word in enumerate(words):
-        if word == "@" and i + 1 < len(words):
-            expression_names.append(" ".join(words[start:i + 2]))
-            start = i + 2
+        words = header[dimension:]
+        expression_names = []
+        start = 0
 
-    if len(expression_names) != expressions:
-        raise ValueError("Could not parse all expression names")
+        for i, word in enumerate(words):
+            if word == "@" and i + 1 < len(words):
+                expression_names.append(" ".join(words[start:i + 2]))
+                start = i + 2
 
-    df = pd.read_csv(filename, sep=r"\s+", comment="%", header=None)
-    df.columns = coordinates + expression_names
+        if len(expression_names) != expressions:
+            raise ValueError("Could not parse all expression names")
 
-    return df
+        df = pd.read_csv(filename, sep=r"\s+", comment="%", header=None)
+        df.columns = coordinates + expression_names
+
+        return df
+    
+    else:
+        raise ValueError(f"Could not parse file header for dimension {dimension}, expressions {expressions}, and header {header}")
