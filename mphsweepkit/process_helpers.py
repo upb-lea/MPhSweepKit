@@ -80,7 +80,10 @@ def read_comsol_dataset(filename):
             elif line.startswith("% x"):
                 header = line[1:].split()
 
-    if dimension is int and expressions is int and header is list:
+    if type(dimension) is int and type(expressions) is int and type(header) is list:
+        # print(f"type dimension={type(dimension)}")
+        # print(f"type expressions={type(expressions)}")
+        # print(f"type header={type(header)}")
 
         coordinates = {
             1: ["x"],
@@ -107,6 +110,6 @@ def read_comsol_dataset(filename):
         df.columns = coordinates + expression_names
 
         return df
-    
+
     else:
         raise ValueError(f"Could not parse file header for dimension {dimension}, expressions {expressions}, and header {header}")

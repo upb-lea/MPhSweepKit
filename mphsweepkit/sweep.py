@@ -361,7 +361,8 @@ class CascadedSweepModel:
                                         descriptions: list[str],
                                         units: list[str],
                                         looplevel: list[list[int]],
-                                        looplevelinput: list[str]):
+                                        looplevelinput: list[str],
+                                        geometry_no: int):
         """
         Export a datasheet with expressions.
 
@@ -406,9 +407,6 @@ class CascadedSweepModel:
         export_node.property("descr", value=descriptions)
         export_node.property("unit", value=units)
 
-        # Assuming the last level corresponds to geometry
-        geometry_no = looplevel[-1][0]  
-
         # Path to the output file for the export
         path2file = str(self.dir_field_data.joinpath(f"geometry_{geometry_no}.txt").absolute())
         
@@ -435,73 +433,131 @@ class CascadedSweepModel:
         return looplevel
     
     
-    def get_looplevel_array(self):
+    def _get_looplevel_array(self):
         """Create loop-level arrays, excluding sweeps of length <= 1."""
         return [
             list(range(1, length + 1))
             for length in self.sweep_loop_lengths
-            if length > 1
+            # if length > 1
         ]
 
 
-    def parse_looplevels_to_comsol(self, cls):
+    def _parse_cascaded_looplevels_from_comsol(self, cls):
         """
         Validate the sweep configuration and return loop levels in
         COMSOL order (inside to outside).
         """
         loop_names = self.sweep_loop_levels
         loop_lengths = self.sweep_loop_lengths
-
-        if len(loop_names) != len(loop_lengths):
+        loop_types = self.sweep_loop_types
+        print(loop_lengths)
+        
+        if len(loop_names) != len(loop_lengths) or len(loop_names) != len(loop_types):
             raise ValueError(
-                "Sweep loop levels and lengths must have the same length."
+                "Sweep loop levels, lengths, and types must have the same length."
             )
+        
+        if loop_types == ['BatchSweep', 'MaterialSweep', 'Parametric', 'CoilCurrentCalculation', 'Frequency']:
+            print("Sweep configuration is valid.")
+            # materials_per_geometry = loop_lengths[0] * loop_lengths[1]
 
-        normalized_names = [
-            name.strip().casefold()
-            for name in loop_names
-        ]
+            loop_level_arr = [ 
+                list(range(1, length + 1))
+                for length in self.sweep_loop_lengths
+                if length > 1
+            ]
 
-        if not normalized_names or normalized_names[0] != "geometry sweep":
-            raise ValueError(
-                "The first loop level must be 'Geometry Sweep'."
-            )
+        return loop_level_arr
 
-        if "geometry sweep" in normalized_names[1:]:
-            raise ValueError(
-                "'Geometry Sweep' may only occur as the first loop level."
-            )
+        # normalized_names = [
+        #     name.strip().casefold()
+        #     for name in loop_names
+        # ]
 
-        return self.get_looplevel_array()[::-1]
+
+        # if not normalized_names or normalized_names[0] != "geometry sweep":
+        #     raise ValueError(
+        #         "The first loop level must be 'Geometry Sweep'."
+        #     )
+
+        # if "geometry sweep" in normalized_names[1:]:
+        #     raise ValueError(
+        #         "'Geometry Sweep' may only occur as the first loop level."
+        #     )
+        
+        # if "material sweep" in normalized_names[2:]: 
+        #     raise ValueError(
+        #         "'Material Sweep' may only occur as the second loop level."
+        #     )
+
+        # return self._get_looplevel_array()[::-1]
 
     @staticmethod
-    def flatten_geometry_level(looplevel_array):
+    def _flatten_geometry_level(looplevel_array):
         """
         Split the final geometry level into one configuration per geometry.
 
         Example:
-            [..., [1, 2, 3]]
+            [..., [1, 2],  [1, 2, 3]]
 
         becomes:
             [
-                [..., [1]],
-                [..., [2]],
-                [..., [3]],
+                [..., [1, 4]],
+                [..., [2, 5]],
+                [..., [3, 6]],
             ]
         """
         if not looplevel_array:
             return []
 
-        geometry_levels = looplevel_array[-1]
-        other_levels = looplevel_array[:-1]
+        geometry_levels = looplevel_array[0]
+        material_levels = looplevel_array[1] 
+        excitation_level = looplevel_array[2]
+        frequency_level = looplevel_array[4]
+
+        print(f"Geometry levels: {geometry_levels}")
+        print(f"Material levels: {material_levels}")
+        print(f"Excitation levels: {excitation_level}")
+        print(f"Frequency levels: {frequency_level}")
+
+        # return [
+        #     [level.copy() for level in geometry_levels] + [[geometry]]
+        #     for geometry in geometry_levels
+        # ]
+
+        return [[["hallo"]]]
+
+    @staticmethod
+    def pack_geometry_material(geometry_levels, material_levels, excitation_levels, frequency_levels):
+
+        material_count = len(material_levels)
 
         return [
-            [level.copy() for level in other_levels] + [[geometry]]
-            for geometry in geometry_levels
+            [
+                list(frequency_levels),
+                list(excitation_levels),
+                [
+                    geometry_index * material_count + material_index + 1
+                    for material_index in range(material_count)
+                ],
+            ]
+            for geometry_index, _ in enumerate(geometry_levels)
         ]
-    
-    def get_comsol_looplevels(self):
-        """Run the complete conversion."""
-        looplevel_array = self.parse_looplevels_to_comsol(self)
-        return self.flatten_geometry_level(looplevel_array)
+
+    def get_geometry_looplevels(self) -> list[list[list[int]]]:
+        """Get the loop levels for each geometry configuration."""
+        # looplevel_array = self._parse_cascaded_looplevels_from_comsol(self)
+        looplevel_array = self._get_looplevel_array()
+        print(f"Loop levels from COMSOL: {looplevel_array}")
+
+        if self.sweep_loop_types == ['BatchSweep', 'MaterialSweep', 'Parametric', 'CoilCurrentCalculation', 'Frequency']:
+            return self.pack_geometry_material(looplevel_array[0], looplevel_array[1], looplevel_array[2], looplevel_array[4])
+
+        elif self.sweep_loop_types == ['BatchSweep', 'MaterialSweep', 'Parametric', 'Frequency']:
+            return self.pack_geometry_material(looplevel_array[0], looplevel_array[1], looplevel_array[2], looplevel_array[3])
+
+        else:
+            raise ValueError(
+                "Sweep configuration is not valid. Expected ['BatchSweep', 'MaterialSweep', 'Parametric', 'CoilCurrentCalculation', 'Frequency']."
+            )
     
