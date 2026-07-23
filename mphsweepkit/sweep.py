@@ -51,12 +51,16 @@ class CascadedSweepModel:
         # ... directories for batch directory
         self.dir_batch_data = Path("batch_data")
         self.dir_batch_data.mkdir(parents=True, exist_ok=True)
+        # ... directories for meta data
+        self.dir_meta_data = Path("meta_data")
+        self.dir_meta_data.mkdir(parents=True, exist_ok=True)
 
         # From the COMSOL-model, update global ... 
         # ... input data (sweep parameters) 
         # ... output data (post-processing results -> initially empty)
         self.input_data: Optional[pd.DataFrame] = None
         self.output_data: pd.DataFrame = pd.DataFrame()
+        self.meta_data: pd.DataFrame = pd.DataFrame()
         self._update_data_from_model()
 
 
@@ -170,10 +174,12 @@ class CascadedSweepModel:
         )
 
         # Print loop lengths
-        self.sweep_loop_lengths = [self._get_loop_length(node) for node in self.sweep_loop_nodes]
-        
+        self.sweep_loop_lengths = [self._get_loop_length(node) for node in self.sweep_loop_nodes]      
         print(f"Loop names: {self.sweep_loop_levels}")
         print(f"Loop lengths: {self.sweep_loop_lengths}")
+
+        # TODO: write sweep info to self.meta_data DataFrame
+
 
         # Input table changed -> reset outputs to aligned empty frame
         self._reset_outputs_to_inputs_index()
@@ -204,6 +210,7 @@ class CascadedSweepModel:
         )
 
         self._update_data_from_model()
+
 
     def set_parametric_sweep(
         self,
@@ -249,11 +256,11 @@ class CascadedSweepModel:
         # TODO: Check if the dataset already exists and handle it (e.g., rename or overwrite)
         self._rename_last_dataset(self.solution_dataset_name)
 
+
     def _rename_last_dataset(self, new_name: str):
         """Rename the last dataset in the model."""
         last_dataset = self.model / "datasets" / self.model.datasets()[-1]
         last_dataset.rename(new_name)
-
 
     # Post processing of global data
     def post_process_globals(self, post_processing_exprs: dict[str, dict[str, str]]):
@@ -274,6 +281,7 @@ class CascadedSweepModel:
             )
             self.output_data.loc[:, column_key] = values
 
+
     def save_global_data(self):
         """Save input/output dataframes to disk.
 
@@ -291,7 +299,6 @@ class CascadedSweepModel:
         self.output_data.to_csv(target_dir / "output_data.csv", index=True)
 
         print(f"Saved result data to: {target_dir.resolve()}")
-
 
     # Working with selections and datasets
     def print_available_selections(self):
@@ -314,6 +321,7 @@ class CascadedSweepModel:
             if self.model.java.selection(str(tag)).label() == selection_name and str(tag).endswith("_" + selection_type)
         )
 
+
     def _duplicate_solution_dataset(self, duplicate_name):
         """
         Duplicate a dataset and rename it.
@@ -328,6 +336,7 @@ class CascadedSweepModel:
         new_dataset.property("solution", value=solution_dataset.property("solution"))
 
         return new_dataset
+
 
     def create_dataset_selection(self, 
                                  selection_name: str, 
@@ -354,6 +363,7 @@ class CascadedSweepModel:
             new_dataset.java.selection().named(selection_tag)
             
             print(f"Creating dataset '{selection_dataset_name}' from selection '{selection_name}' of type '{selection_type}'.")
+
 
     def export_dataset_with_expressions(self, 
                                         dataset_name: str,
@@ -414,121 +424,37 @@ class CascadedSweepModel:
 
         return export_node
 
-
-    def _looplevel_from_input(self, looplevelinput: list[str]) -> list[list[int]]:
-        """
-        Convert looplevelinput to looplevel.
-
-        :param looplevelinput: List of strings specifying the loop level input type for each expression.
-        :return: List of lists specifying the loop levels of the parameter cascode.
-        """
-        looplevel = []
-        for input_type in looplevelinput:
-            if input_type == "all":
-                looplevel.append([1, 2, 3, 4])  # Example: all levels
-            elif input_type == "manual":
-                looplevel.append([2])  # Example: manual level
-            else:
-                raise ValueError(f"Unknown looplevelinput type: {input_type}")
-        return looplevel
-    
     
     def _get_looplevel_array(self):
-        """Create loop-level arrays, excluding sweeps of length <= 1."""
+        """Create loop-level arrays."""
         return [
             list(range(1, length + 1))
             for length in self.sweep_loop_lengths
-            # if length > 1
         ]
 
 
-    def _parse_cascaded_looplevels_from_comsol(self, cls):
-        """
-        Validate the sweep configuration and return loop levels in
-        COMSOL order (inside to outside).
-        """
-        loop_names = self.sweep_loop_levels
-        loop_lengths = self.sweep_loop_lengths
-        loop_types = self.sweep_loop_types
-        print(loop_lengths)
-        
-        if len(loop_names) != len(loop_lengths) or len(loop_names) != len(loop_types):
-            raise ValueError(
-                "Sweep loop levels, lengths, and types must have the same length."
-            )
-        
-        if loop_types == ['BatchSweep', 'MaterialSweep', 'Parametric', 'CoilCurrentCalculation', 'Frequency']:
-            print("Sweep configuration is valid.")
-            # materials_per_geometry = loop_lengths[0] * loop_lengths[1]
-
-            loop_level_arr = [ 
-                list(range(1, length + 1))
-                for length in self.sweep_loop_lengths
-                if length > 1
-            ]
-
-        return loop_level_arr
-
-        # normalized_names = [
-        #     name.strip().casefold()
-        #     for name in loop_names
-        # ]
-
-
-        # if not normalized_names or normalized_names[0] != "geometry sweep":
-        #     raise ValueError(
-        #         "The first loop level must be 'Geometry Sweep'."
-        #     )
-
-        # if "geometry sweep" in normalized_names[1:]:
-        #     raise ValueError(
-        #         "'Geometry Sweep' may only occur as the first loop level."
-        #     )
-        
-        # if "material sweep" in normalized_names[2:]: 
-        #     raise ValueError(
-        #         "'Material Sweep' may only occur as the second loop level."
-        #     )
-
-        # return self._get_looplevel_array()[::-1]
-
     @staticmethod
-    def _flatten_geometry_level(looplevel_array):
+    def _pack_looplevels_per_geometry(
+        geometry_levels: list[int], 
+        material_levels: list[int], 
+        excitation_levels: list[int], 
+        frequency_levels: list[int]) -> list[list[list[int]]]:
         """
-        Split the final geometry level into one configuration per geometry.
+        Pack loop levels for each geometry configuration.
 
-        Example:
-            [..., [1, 2],  [1, 2, 3]]
-
-        becomes:
-            [
-                [..., [1, 4]],
-                [..., [2, 5]],
-                [..., [3, 6]],
-            ]
+            returns:
+                [
+                    [frequency_levels, excitation_levels, material_levels_for_geometry_1],
+                    [frequency_levels, excitation_levels, material_levels_for_geometry_2],
+                    ...
+                ]
+        
+        :param geometry_levels: List of geometry levels.
+        :param material_levels: List of material levels.
+        :param excitation_levels: List of excitation levels.
+        :param frequency_levels: List of frequency levels.
+        :return: A list of loop levels for each geometry configuration.
         """
-        if not looplevel_array:
-            return []
-
-        geometry_levels = looplevel_array[0]
-        material_levels = looplevel_array[1] 
-        excitation_level = looplevel_array[2]
-        frequency_level = looplevel_array[4]
-
-        print(f"Geometry levels: {geometry_levels}")
-        print(f"Material levels: {material_levels}")
-        print(f"Excitation levels: {excitation_level}")
-        print(f"Frequency levels: {frequency_level}")
-
-        # return [
-        #     [level.copy() for level in geometry_levels] + [[geometry]]
-        #     for geometry in geometry_levels
-        # ]
-
-        return [[["hallo"]]]
-
-    @staticmethod
-    def pack_geometry_material(geometry_levels, material_levels, excitation_levels, frequency_levels):
 
         material_count = len(material_levels)
 
@@ -544,20 +470,50 @@ class CascadedSweepModel:
             for geometry_index, _ in enumerate(geometry_levels)
         ]
 
-    def get_geometry_looplevels(self) -> list[list[list[int]]]:
-        """Get the loop levels for each geometry configuration."""
-        # looplevel_array = self._parse_cascaded_looplevels_from_comsol(self)
+
+    def get_looplevels_per_geometry(self) -> list[list[list[int]]]:
+        """
+        Get the loop levels for each geometry configuration.
+
+            returns:
+                [
+                    [frequency_levels, excitation_levels, material_levels_for_geometry_1],
+                    [frequency_levels, excitation_levels, material_levels_for_geometry_2],
+                    ...
+                ]
+        
+        :return: A list of loop levels for each geometry configuration.
+        """
         looplevel_array = self._get_looplevel_array()
         print(f"Loop levels from COMSOL: {looplevel_array}")
 
-        if self.sweep_loop_types == ['BatchSweep', 'MaterialSweep', 'Parametric', 'CoilCurrentCalculation', 'Frequency']:
-            return self.pack_geometry_material(looplevel_array[0], looplevel_array[1], looplevel_array[2], looplevel_array[4])
+        if self.sweep_loop_types == ['BatchSweep', 
+                                     'MaterialSweep', 
+                                     'Parametric', 
+                                     'CoilCurrentCalculation', 
+                                     'Frequency']:
+            # The 'CoilCurrentCalculation' sweep type does not add any additional loops, 
+            # so we can ignore it in the loop level packing.
+            return self._pack_looplevels_per_geometry(
+                looplevel_array[0], 
+                looplevel_array[1], 
+                looplevel_array[2], 
+                looplevel_array[4]
+                )
 
-        elif self.sweep_loop_types == ['BatchSweep', 'MaterialSweep', 'Parametric', 'Frequency']:
-            return self.pack_geometry_material(looplevel_array[0], looplevel_array[1], looplevel_array[2], looplevel_array[3])
+        elif self.sweep_loop_types == ['BatchSweep', 
+                                       'MaterialSweep', 
+                                       'Parametric', 
+                                       'Frequency']:
+            return self._pack_looplevels_per_geometry(
+                looplevel_array[0], 
+                looplevel_array[1], 
+                looplevel_array[2], 
+                looplevel_array[3]
+                )
 
         else:
             raise ValueError(
-                "Sweep configuration is not valid. Expected ['BatchSweep', 'MaterialSweep', 'Parametric', 'CoilCurrentCalculation', 'Frequency']."
+                "Sweep configuration is not valid. Expected ['BatchSweep', 'MaterialSweep', 'Parametric', 'CoilCurrentCalculation' (optional), 'Frequency']."
             )
     
