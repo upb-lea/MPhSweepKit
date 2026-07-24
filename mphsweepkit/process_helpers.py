@@ -65,7 +65,7 @@ def load_post_processing_exprs(
 
 
 
-def read_geometry_dataset(subfolder, description, geometry_idx, inner_idx):
+def read_geometry_dataset(subfolder, description, geometry_idx) -> pd.DataFrame:
 
     dimension = None
     expressions = None
