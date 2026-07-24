@@ -54,16 +54,12 @@ class CascadedSweepModel:
         # ... directories for batch directory
         self.dir_batch_data = Path("batch_data")
         self.dir_batch_data.mkdir(parents=True, exist_ok=True)
-        # ... directories for meta data
-        self.dir_meta_data = Path("meta_data")
-        self.dir_meta_data.mkdir(parents=True, exist_ok=True)
 
         # From the COMSOL-model, update global ...
         # ... input data (sweep parameters)
         # ... output data (post-processing results -> initially empty)
         self.input_data: Optional[pd.DataFrame] = None
         self.output_data: pd.DataFrame = pd.DataFrame()
-        self.meta_data: pd.DataFrame = pd.DataFrame()
         self._update_data_from_model()
 
     @property
@@ -177,6 +173,7 @@ class CascadedSweepModel:
             group_map=sweep_map,
         )
 
+
         # Print loop lengths
         self.sweep_loop_lengths = [
             self._get_loop_length(node) for node in self.sweep_loop_nodes
@@ -184,16 +181,90 @@ class CascadedSweepModel:
         print(f"Loop names: {self.sweep_loop_levels}")
         print(f"Loop lengths: {self.sweep_loop_lengths}")
 
-        # TODO: write sweep info to self.meta_data DataFrame
 
         # Input table changed -> reset outputs to aligned empty frame
         self._reset_outputs_to_inputs_index()
+
+        # Add geometry_idx and internal_idx columns to the input data
+        self.add_numbering_of_geometries_to_input_data()
 
         print("--------------------------------")
         print("Data updated from MPh-model.")
         print(f"Input data shape: {self.input_data.shape}")
         print(f"Reset output data to shape of the input data: {self.output_data.shape}")
         print(f"Combined shape: {self.combined_data.shape}")
+
+
+
+    def add_numbering_of_geometries_to_input_data(self):
+        """Add geometry_idx and internal_idx columns."""
+
+        if self.input_data is None:
+            raise ValueError(
+                "No input data available. Please set up the sweeps and run the simulation first."
+            )
+        df = self.input_data.copy()
+
+        if not isinstance(df.columns, pd.MultiIndex):
+            raise ValueError(
+                "Expected MultiIndex columns containing name, unit, and group levels."
+            )
+
+        if "group" not in df.columns.names:
+            raise ValueError(
+                f"No column level named 'group'. "
+                f"Available levels: {df.columns.names}"
+            )
+
+        # Read the values from the "group" column-header level
+        group_values = (
+            df.columns.get_level_values("group")
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+        )
+
+        # Full MultiIndex labels of geometry columns
+        geometry_cols = df.columns[
+            group_values == "geometry sweep"
+        ].tolist()
+
+        if not geometry_cols:
+            raise ValueError(
+                "No columns belonging to 'Geometry Sweep' were found. "
+                f"Available groups: "
+                f"{df.columns.get_level_values('group').unique().tolist()}"
+            )
+
+        # print("Geometry columns:", geometry_cols)
+
+        # Number unique geometries in order of first appearance
+        geometry_keys = pd.MultiIndex.from_frame(df.loc[:, geometry_cols])
+        geometry_idx = pd.factorize(geometry_keys, sort=False)[0]
+
+        # Number rows within each geometry
+        internal_idx = (
+            pd.Series(geometry_idx, index=df.index)
+            .groupby(geometry_idx, sort=False)
+            .cumcount()
+            .to_numpy()
+        )
+
+        # New column labels matching the existing three-level columns
+        geometry_idx_col = ("geometry_idx", "", "Indexing")
+        internal_idx_col = ("internal_idx", "", "Indexing")
+
+        df[geometry_idx_col] = geometry_idx
+        df[internal_idx_col] = internal_idx
+
+        # Optionally save the result
+        self.input_data = df
+
+        # Print a message about the added columns
+        print(
+            f"Added 'geometry_idx' and 'internal_idx' columns to input_data. "
+            f"New shape: {self.input_data.shape}"
+        )
 
     def set_material_sweep(
         self,
@@ -215,6 +286,7 @@ class CascadedSweepModel:
         )
 
         self._update_data_from_model()
+        self.add_numbering_of_geometries_to_input_data()
 
     def set_parametric_sweep(
         self,
@@ -238,6 +310,7 @@ class CascadedSweepModel:
         )
 
         self._update_data_from_model()
+        self.add_numbering_of_geometries_to_input_data()
 
     # Simulation
     def simulate(self):
