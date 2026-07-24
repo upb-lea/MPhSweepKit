@@ -65,12 +65,13 @@ def load_post_processing_exprs(
 
 
 
-def read_comsol_dataset(filename):
+def read_geometry_dataset(subfolder, description, geometry_idx, inner_idx):
 
     dimension = None
     expressions = None
     header = None
 
+    filename = f"field_data/{subfolder}/geometry_{geometry_idx}_{description}.txt"
     with open(filename) as f:
         for line in f:
             if line.startswith("% Dimension:"):
