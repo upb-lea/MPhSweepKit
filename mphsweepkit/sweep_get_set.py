@@ -77,12 +77,15 @@ def set_parametric_sweep(
     """
     Set a COMSOL parametric sweep.
 
-    :param sweep_node: MPh node for the parametric sweep feature.
+    :param sweep_node: MPh Node of type 'Parametric' or 'BatchSweep'.
     :param param_names: Parameter names (same order as rows in param_values).
     :param param_units: Units aligned with param_names.
-    :param param_values: 2D values array aligned with param_names.
-    :param sweep_type: COMSOL sweep type, usually 'sparse' or 'filled'.
+    :param param_values: 2D value table aligned with param_names and param_units.
+    :param sweep_type: COMSOL sweep type 'sparse' or 'filled'.
     """
+    if sweep_node.type() not in ["Parametric", "BatchSweep"]:
+        raise ValueError(f"Node type '{sweep_node.type()}' is not a valid parametric sweep node.")
+
     if len(param_names) != len(param_units):
         raise ValueError("param_names and param_units must have the same length.")
 
@@ -101,11 +104,14 @@ def set_material_sweep(
     """
     Set a COMSOL material sweep.
 
-    :param sweep_node: MPh node for the material sweep feature.
+    :param sweep_node: MPh Node of type 'MaterialSweep'.
     :param material_names: Material parameter names.
-    :param material_values: 2D values array aligned with material_names.
-    :param sweep_type: COMSOL sweep type, usually 'sparse' or 'filled'.
+    :param material_values: 2D value table aligned with material_names.
+    :param sweep_type: COMSOL sweep type 'sparse' or 'filled'.
     """
+    if sweep_node.type() != "MaterialSweep":
+        raise ValueError(f"Node type '{sweep_node.type()}' is not a valid material sweep node.")
+
     sweep_node.property("pname", material_names)
     sweep_node.property("plistarr", np.asarray(material_values, dtype=float))
     sweep_node.property("sweeptype", sweep_type)
@@ -119,10 +125,13 @@ def set_frequency_sweep(
     """
     Set a COMSOL frequency sweep.
 
-    :param sweep_node: MPh node for the frequency sweep feature.
-    :param frequency_values: 1D/2D frequency values.
+    :param sweep_node: MPh Node of type 'Frequency'.
+    :param frequency_values: List of frequency values.
     :param frequency_unit: Frequency unit, e.g. 'Hz', 'kHz', 'MHz'.
     """
+    if sweep_node.type() != "Frequency":
+        raise ValueError(f"Node type '{sweep_node.type()}' is not a valid frequency sweep node.")
+    
     sweep_node.property("plist", np.asarray(frequency_values, dtype=float))
     sweep_node.property("punit", frequency_unit)
     
