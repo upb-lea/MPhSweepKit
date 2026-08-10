@@ -65,10 +65,18 @@ def load_post_processing_exprs(
 
 
 
-def read_geometry_dataset(subfolder, description, geometry_idx) -> pd.DataFrame:
-
+def read_fields_on_geometry(subfolder, description, geometry_idx) -> tuple[pd.DataFrame, str]:
+    """
+    Read field data from a text file exported from COMSOL.
+    
+    :param subfolder: Subfolder where the field data file is located.
+    :param description: Description of the field data file.
+    :param geometry_idx: Index of the geometry for which the field data is read.
+    :returns: A tuple containing the DataFrame with field data and the length unit.
+    """
     dimension = None
     expressions = None
+    length_unit = "m"
     header = None
 
     filename = f"field_data/{subfolder}/geometry_{geometry_idx}_{description}.txt"
@@ -78,6 +86,8 @@ def read_geometry_dataset(subfolder, description, geometry_idx) -> pd.DataFrame:
                 dimension = int(line.split(":", 1)[1])
             elif line.startswith("% Expressions:"):
                 expressions = int(line.split(":", 1)[1])
+            elif line.startswith("% Length unit:"):
+                length_unit = line.split(":", 1)[1].strip()
             elif line.startswith("% x"):
                 header = line[1:].split()
 
@@ -110,7 +120,7 @@ def read_geometry_dataset(subfolder, description, geometry_idx) -> pd.DataFrame:
         df = pd.read_csv(filename, sep=r"\s+", comment="%", header=None)
         df.columns = coordinates + expression_names
 
-        return df
+        return df, length_unit
 
     else:
         raise ValueError(f"Could not parse file header for dimension {dimension}, expressions {expressions}, and header {header}")

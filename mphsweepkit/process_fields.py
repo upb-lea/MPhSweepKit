@@ -12,8 +12,7 @@ def plot_field(
     ax: plt.Axes | None = None,
     x_col: str = "x",
     y_col: str = "y",
-    x_unit: str = "m",
-    y_unit: str = "m",
+    length_unit: str = "m",
     cmap: str = "viridis",
     levels: int | Sequence[float] = 30,
     colorbar: bool = True,
@@ -26,8 +25,7 @@ def plot_field(
     :param ax: Axes on which to draw. A new figure and axes are created if omitted.
     :param x_col: DataFrame column containing x coordinates.
     :param y_col: DataFrame column containing y coordinates.
-    :param x_unit: Unit for the x-axis.
-    :param y_unit: Unit for the y-axis.
+    :param length_unit: Unit for the length dimensions.
     :param cmap: Matplotlib colormap name.
     :param levels: Number of contour levels or an explicit sequence of level boundaries.
     :param colorbar: Whether to add a colorbar.
@@ -42,8 +40,8 @@ def plot_field(
     fct_xy = df[value_col].to_numpy()
 
     contour = ax.tricontourf(x, y, fct_xy, levels=levels, cmap=cmap, norm=norm)
-    ax.set(xlabel=f"{x_col} [{x_unit}]", 
-           ylabel=f"{y_col} [{y_unit}]", 
+    ax.set(xlabel=f"{x_col} [{length_unit}]", 
+           ylabel=f"{y_col} [{length_unit}]", 
            aspect="equal")
     ax.figure.colorbar(contour, ax=ax) if colorbar else None
 
@@ -55,10 +53,11 @@ def plot_fields(
     list_of_value_cols: Sequence[str],
     list_of_labels: Sequence[str],
     field_name: str,
-    unit: str,
+    field_unit: str,
     figsize: tuple[int, int] = (4, 4),
     x_col: str = "x",
     y_col: str = "y",
+    length_unit: str = "m",
     cmap: str = "viridis",
     levels: int = 50,
     share_y: bool = True
@@ -68,7 +67,7 @@ def plot_fields(
 
     :param list_of_value_cols: DataFrame columns containing the fields to plot.
     :param list_of_labels: Labels for each subplot.
-    :param unit: The unit of the field values.
+    :param field_unit: The unit of the field values.
     :param figsize: Figure size.
     :param x_col: DataFrame column containing x coordinates.
     :param y_col: DataFrame column containing y coordinates.
@@ -76,13 +75,13 @@ def plot_fields(
     :param levels: Number of contour levels.
     :param share_y: Whether to share the y-axis across subplots.
     :param field_name: The name of the field.
-    :param unit: The unit of the field values.
+    :param field_unit: The unit of the field values.
 
     :returns: fig, axes, cbar
     """
     values = df[list(list_of_value_cols)].to_numpy()
     norm = Normalize(vmin=np.nanmin(values), vmax=np.nanmax(values))
-    shared_levels = np.linspace(norm.vmin, norm.vmax, levels)
+    shared_levels = np.linspace(start=norm.vmin, stop=norm.vmax, num=levels)
 
     fig, axes = plt.subplots(
         1,
@@ -113,6 +112,6 @@ def plot_fields(
             ax.set_ylabel("")
 
     cbar = fig.colorbar(contour, ax=axes, location="right")
-    cbar.ax.set_title(f"{field_name}\n[{unit}]")
+    cbar.ax.set_title(f"{field_name}\n[{field_unit}]")
 
     return fig, axes, cbar
