@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import numpy as np
 import pandas as pd
 from typing import Any
 
@@ -157,3 +158,40 @@ def convert_length_unit(df: pd.DataFrame, length_unit: str, target_unit: str) ->
             df[col] *= factor
 
     return df
+
+def get_geometry_idx_from_filter(df_input: pd.DataFrame, filter_conditions: dict) -> int:
+    """
+    Get the geometry index from the input dataframe based on the provided filter conditions.
+
+    :param df_input: Input dataframe containing geometry information.
+    :param filter_conditions: Dictionary containing filter conditions where keys are column names and values are the
+    :return: The geometry index that matches the filter conditions.
+    """
+    filtered_df = df_input.copy()
+
+    # normalize filter values to support numeric/string matching (e.g. "6.0", 6, 6.0)
+    normalized_conditions = {}
+    for col, value in filter_conditions.items():
+        try:
+            normalized_conditions[col] = float(value)
+        except (TypeError, ValueError):
+            normalized_conditions[col] = str(value).strip()
+
+    # filter the dataframe based on the normalized conditions
+    for col, value in normalized_conditions.items():
+        col_as_num = pd.to_numeric(filtered_df[col], errors="coerce")
+        if col_as_num.notna().any() and isinstance(value, (int, float, np.floating)):
+            filtered_df = filtered_df[col_as_num == float(value)]
+        else:
+            filtered_df = filtered_df[filtered_df[col].astype(str).str.strip() == str(value)]
+
+    # check if the filtered dataframe is not empty
+    if filtered_df.empty:
+        raise ValueError("No matching geometry index found for the given filter conditions.")
+
+    # check if there is more than one matching geometry index
+    if len(set(filtered_df["geometry_idx"])) > 1:
+        raise ValueError("Multiple matching geometry indices found for the given filter conditions. Please refine your filter.")
+
+    # return the geometry index of the first (and only) matching row
+    return filtered_df["geometry_idx"].iloc[0]
