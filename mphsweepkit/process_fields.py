@@ -98,6 +98,7 @@ def plot_fields(
             ax=ax,
             x_col=x_col,
             y_col=y_col,
+            length_unit=length_unit,
             value_col=value_col,
             cmap=cmap,
             levels=shared_levels,

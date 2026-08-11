@@ -65,19 +65,20 @@ def load_post_processing_exprs(
 
 
 
-def read_fields_on_geometry(subfolder, description, geometry_idx) -> tuple[pd.DataFrame, str]:
+def read_fields_on_geometry(subfolder, description, geometry_idx, target_length_unit="m") -> tuple[pd.DataFrame, str]:
     """
     Read field data from a text file exported from COMSOL.
     
     :param subfolder: Subfolder where the field data file is located.
     :param description: Description of the field data file.
     :param geometry_idx: Index of the geometry for which the field data is read.
+    :param target_length_unit: The unit for the length dimensions.
     :returns: A tuple containing the DataFrame with field data and the length unit.
     """
     dimension = None
     expressions = None
-    length_unit = "m"
     header = None
+    read_length_unit = target_length_unit
 
     filename = f"field_data/{subfolder}/geometry_{geometry_idx}_{description}.txt"
     with open(filename) as f:
@@ -87,7 +88,7 @@ def read_fields_on_geometry(subfolder, description, geometry_idx) -> tuple[pd.Da
             elif line.startswith("% Expressions:"):
                 expressions = int(line.split(":", 1)[1])
             elif line.startswith("% Length unit:"):
-                length_unit = line.split(":", 1)[1].strip()
+                read_length_unit = line.split(":", 1)[1].strip()
             elif line.startswith("% x"):
                 header = line[1:].split()
 
@@ -120,7 +121,39 @@ def read_fields_on_geometry(subfolder, description, geometry_idx) -> tuple[pd.Da
         df = pd.read_csv(filename, sep=r"\s+", comment="%", header=None)
         df.columns = coordinates + expression_names
 
-        return df, length_unit
+        # Convert the length units of the DataFrame columns
+        df = convert_length_unit(df, read_length_unit, target_length_unit)
+
+        return df, target_length_unit
 
     else:
         raise ValueError(f"Could not parse file header for dimension {dimension}, expressions {expressions}, and header {header}")
+
+
+def convert_length_unit(df: pd.DataFrame, length_unit: str, target_unit: str) -> pd.DataFrame:
+    """
+    Convert the length units of the DataFrame columns.
+
+    :param df: DataFrame containing the field data.
+    :param length_unit: Current length unit of the DataFrame.
+    :param target_unit: Target length unit to convert to.
+    :returns: DataFrame with converted length units.
+    """
+    conversion_factors = {
+        ("m", "mm"): 1000.0,
+        ("mm", "m"): 0.001,
+        ("m", "cm"): 100.0,
+        ("cm", "m"): 0.01,
+        ("mm", "cm"): 0.1,
+        ("cm", "mm"): 10.0,
+    }
+
+    if (length_unit, target_unit) not in conversion_factors:
+        raise ValueError(f"Conversion from {length_unit} to {target_unit} is not supported.")
+
+    factor = conversion_factors[(length_unit, target_unit)]
+    for col in df.columns:
+        if col in ["x", "y", "z"]:
+            df[col] *= factor
+
+    return df
