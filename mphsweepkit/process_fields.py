@@ -134,6 +134,7 @@ def plot_grid_of_fields(
     share_x: bool = True,
     share_y=True,
     normalize_mode="global",  # "global" or "per_row"
+    title: str | None = None,
 ):
     """
     Plot a 2D grid of field contours:
@@ -148,6 +149,7 @@ def plot_grid_of_fields(
     :param list_of_col_labels: Column titles.
     :param normalize_mode: "global" -> one color scale for all subplots
         "per_row" -> one color scale per row
+    :param title: Optional title shown above the full subplot grid.
     """
     n_rows = len(list_of_dfs)
     if n_rows == 0:
@@ -201,6 +203,9 @@ def plot_grid_of_fields(
         sharey=share_y,
         squeeze=False
     )
+
+    if title is not None:
+        fig.suptitle(title)
 
     contour_last = None
     row_contours = []
