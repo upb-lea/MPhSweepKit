@@ -66,7 +66,7 @@ def load_post_processing_exprs(
 
 
 
-def read_fields_on_geometry(subfolder, description, geometry_idx, target_length_unit="m") -> tuple[pd.DataFrame, str]:
+def read_fields_on_geometry(subfolder, description, geometry_idx, target_length_unit="m", switch_xy: bool = False) -> tuple[pd.DataFrame, str]:
     """
     Read field data from a text file exported from COMSOL.
     
@@ -74,6 +74,7 @@ def read_fields_on_geometry(subfolder, description, geometry_idx, target_length_
     :param description: Description of the field data file.
     :param geometry_idx: Index of the geometry for which the field data is read.
     :param target_length_unit: The unit for the length dimensions.
+    :param switch_xy: If True and dimension is 2D/3D, swap x and y coordinate columns.
     :returns: A tuple containing the DataFrame with field data and the length unit.
     """
     dimension = None
@@ -124,6 +125,9 @@ def read_fields_on_geometry(subfolder, description, geometry_idx, target_length_
 
         # Convert the length units of the DataFrame columns
         df = convert_length_unit(df, read_length_unit, target_length_unit)
+
+        if switch_xy and {"x", "y"}.issubset(df.columns):
+            df[["x", "y"]] = df[["y", "x"]].to_numpy()
 
         return df, target_length_unit
 
