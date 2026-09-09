@@ -1,0 +1,12 @@
+{
+    "Z": {
+        "expression": "mef.V0_1/mef.I0_1",
+        "unit": "Ohm",
+        "label": "Complex Impedance"
+    },
+    "C": {
+        "expression": "mef.I0_1/(j*mef.omega*mef.V0_1)",
+        "unit": "F",
+        "label": "Complex Capacitance"
+    }
+}

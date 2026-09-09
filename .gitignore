@@ -6,9 +6,11 @@ __pycache__/
 .vscode/
 batch_data/
 server_dir/
+field_data/
+_dev_data/
 
 # Files
-mphsweepkit/examples/studies/ferrite_plate_capacitor
+
 
 # General File Types
 .env

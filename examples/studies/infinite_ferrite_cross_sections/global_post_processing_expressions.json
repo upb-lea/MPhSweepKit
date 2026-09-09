@@ -1,0 +1,17 @@
+{
+    "p_loss": {
+        "expression": "intopFlux(mf.Qh)/A_c",
+        "unit": "W /m^3",
+        "label": "$p_\\mathrm{loss}$"
+    },
+    "p_mag": {
+        "expression": "intopFlux(mf.Qml)/A_c",
+        "unit": "W /m^3",
+        "label": "$p_\\mathrm{mag}$"
+    },
+    "p_el": {
+        "expression": "intopFlux(mf.Qrh)/A_c",
+        "unit": "W /m^3",
+        "label": "$p_\\mathrm{el}$"
+    }
+}
