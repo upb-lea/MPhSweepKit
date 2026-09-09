@@ -1,0 +1,17 @@
+{
+    "norm_b": {
+        "expression": "mf.normB",
+        "unit": "T",
+        "label": "Magnetic Flux Density"
+    },
+    "norm_e": {
+        "expression": "mf.normE",
+        "unit": "V/m",
+        "label": "Electric Field"
+    },
+    "mu_r": {
+        "expression": "mf.Bphi / mf.Hphi / mu0_const",
+        "unit": "1",
+        "label": "Complex Permeability"
+    }
+}

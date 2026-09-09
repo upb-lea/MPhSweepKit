@@ -73,15 +73,19 @@ def phase_rad(df, source_col, new_col, unit="rad", group="Derived"):
     return _add_derived(df, source_col, new_col, unit, np.angle, group=group)
 
 
-def phase_deg(df, source_col, new_col, unit="deg", group="Derived"):
+def phase_deg(df, source_col, new_col, unit="deg", group="Derived", change_sign=False):
+    sign = -1 if change_sign else 1
     return _add_derived(
-        df, source_col, new_col, unit, lambda z: np.degrees(np.angle(z)), group=group
+        df, source_col, new_col, unit, lambda z: sign * np.degrees(np.angle(z)), group=group
     )
 
 
-def real(df, source_col, new_col, unit, group="Derived"):
-    return _add_derived(df, source_col, new_col, unit, np.real, group=group)
+def real(df, source_col, new_col, unit, group="Derived", change_sign=False):
+    sign = -1 if change_sign else 1
+    return _add_derived(df, source_col, new_col, unit, lambda z: sign * np.real(z), group=group)
 
 
-def imag(df, source_col, new_col, unit, group="Derived"):
-    return _add_derived(df, source_col, new_col, unit, np.imag, group=group)
+
+def imag(df, source_col, new_col, unit, group="Derived", change_sign=False):
+    sign = -1 if change_sign else 1
+    return _add_derived(df, source_col, new_col, unit, lambda z: sign * np.imag(z), group=group)

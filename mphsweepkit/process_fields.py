@@ -50,10 +50,11 @@ def plot_field(
 
 def plot_row_of_fields(
     df: pd.DataFrame,
-    list_of_value_cols: Sequence[str],
+    list_of_col_names: Sequence[str],
     list_of_labels: Sequence[str],
-    field_name: str,
-    field_unit: str,
+    field_name: str = "",
+    field_symbol: str = "",
+    field_unit: str = "",
     figsize: tuple[int, int] = (4, 4),
     x_col: str = "x",
     y_col: str = "y",
@@ -67,32 +68,33 @@ def plot_row_of_fields(
 
     :param list_of_value_cols: DataFrame columns containing the fields to plot.
     :param list_of_labels: Labels for each subplot.
-    :param field_unit: The unit of the field values.
+    :param field_name: The name of the field. To make it invisible use an empty string "".
+    :param field_symbol: The symbol of the field. To make it invisible use an empty string "".
+    :param field_unit: The unit of the field values. To make it invisible use an empty string "".
     :param figsize: Figure size.
     :param x_col: DataFrame column containing x coordinates.
     :param y_col: DataFrame column containing y coordinates.
+    :param length_unit: Unit for the length dimensions. To make it invisible use an empty string "".
     :param cmap: Matplotlib colormap name.
     :param levels: Number of contour levels.
     :param share_y: Whether to share the y-axis across subplots.
-    :param field_name: The name of the field.
-    :param field_unit: The unit of the field values.
 
     :returns: fig, axes, cbar
     """
-    values = df[list(list_of_value_cols)].to_numpy()
+    values = df[list(list_of_col_names)].to_numpy()
     norm = Normalize(vmin=np.nanmin(values), vmax=np.nanmax(values))
     shared_levels = np.linspace(start=norm.vmin, stop=norm.vmax, num=levels)
 
     fig, axes = plt.subplots(
         1,
-        len(list_of_value_cols),
+        len(list_of_col_names),
         figsize=figsize,
         constrained_layout=True,
         sharey=share_y
     )
     axes = np.atleast_1d(axes)
 
-    for ax, value_col, label in zip(axes, list_of_value_cols, list_of_labels):
+    for ax, value_col, label in zip(axes, list_of_col_names, list_of_labels):
         contour = plot_field(
             df=df,
             ax=ax,
@@ -113,24 +115,25 @@ def plot_row_of_fields(
             ax.set_ylabel("")
 
     cbar = fig.colorbar(contour, ax=axes, location="right")
-    cbar.ax.set_title(f"{field_name}\n[{field_unit}]")
+    cbar.ax.set_title(f"{field_name}\n{field_symbol} [{field_unit}]", ha="left", x=0)
 
     return fig, axes, cbar
 
 
 def plot_grid_of_fields(
-    list_of_dfs,
-    list_of_row_labels,
-    list_of_value_cols,
-    list_of_col_labels,
-    field_name,
-    field_unit,
-    length_unit="m",
-    x_col="x",
-    y_col="y",
-    cmap="viridis",
-    levels=50,
-    figsize=(10, 8),
+    list_of_dfs: Sequence[pd.DataFrame],
+    list_of_row_labels: Sequence[str],
+    list_of_value_cols: Sequence[Sequence[str]],
+    list_of_col_labels: Sequence[str],
+    field_name: str = "",
+    field_symbol: str = "",
+    field_unit: str = "",
+    length_unit: str = "m",
+    x_col: str = "x",
+    y_col: str = "y",
+    cmap: str = "viridis",
+    levels: int = 50,
+    figsize: tuple = (10, 8),
     share_x: bool = True,
     share_y=True,
     normalize_mode="global",  # "global" or "per_row"
@@ -147,6 +150,17 @@ def plot_grid_of_fields(
         If list[str]: same value columns for every row.
         If list[list[str]]: row-specific columns.
     :param list_of_col_labels: Column titles.
+    :param field_name: The name of the field. To make it invisible use an empty string "".
+    :param field_symbol: The symbol of the field. To make it invisible use an empty string "".
+    :param field_unit: The unit of the field values. To make it invisible use an empty string "".
+    :param length_unit: Unit for the length dimensions. To make it invisible use an empty string "".
+    :param x_col: DataFrame column containing x coordinates.
+    :param y_col: DataFrame column containing y coordinates.
+    :param cmap: The colormap to use for the contours.
+    :param levels: The number of contour levels.
+    :param figsize: The size of the figure.
+    :param share_x: Whether to share the x-axis across subplots.
+    :param share_y: Whether to share the y-axis across subplots.
     :param normalize_mode: "global" -> one color scale for all subplots
         "per_row" -> one color scale per row
     :param title: Optional title shown above the full subplot grid.
@@ -263,13 +277,13 @@ def plot_grid_of_fields(
     # colorbar(s)
     if normalize_mode == "global":
         cbar = fig.colorbar(contour_last, ax=axes, location="right")
-        cbar.ax.set_title(f"{field_name}\n[{field_unit}]")
+        cbar.ax.set_title(f"{field_name}\n{field_symbol} [{field_unit}]", ha="left", x=0)
         cbars = [cbar]
     else:
         cbars = []
         for r in range(n_rows):
             cbar_r = fig.colorbar(row_contours[r], ax=axes[r, :], location="right")
-            cbar_r.ax.set_title(f"{field_name}\n[{field_unit}]")
+            cbar_r.ax.set_title(f"{field_name}\n{field_symbol} [{field_unit}]", ha="left", x=0)
             cbars.append(cbar_r)
 
     return fig, axes, cbars

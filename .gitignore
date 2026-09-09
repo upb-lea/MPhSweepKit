@@ -6,10 +6,11 @@ __pycache__/
 .vscode/
 batch_data/
 server_dir/
+field_data/
+_dev_data/
 
 # Files
-examples/studies/ferrite_plate_capacitor/field_data
-examples/studies/infinite_ferrite_cross_sections/field_data
+
 
 # General File Types
 .env
