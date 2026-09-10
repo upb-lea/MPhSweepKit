@@ -55,7 +55,18 @@ def from_multiple_columns(df, source_cols, new_col, unit, func, group="Derived")
     func gets a list of complex Series in the same order as source_cols.
     Example func: lambda cols: np.real(cols[0]) + np.real(cols[1])
     """
-    cols = [_as_complex_series(df, c) for c in source_cols]
+    numeric_cols = [pd.to_numeric(df[c], errors="coerce") for c in source_cols]
+
+    has_complex_input = any(
+        np.any(np.abs(np.imag(col.to_numpy(dtype=complex, copy=False))) > 0)
+        for col in numeric_cols
+    )
+
+    if has_complex_input:
+        cols = [col.astype(complex) for col in numeric_cols]
+    else:
+        cols = [col.astype(float) for col in numeric_cols]
+
     values = func(cols)
 
     _init_derived_column(df, new_col)
