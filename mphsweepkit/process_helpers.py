@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from typing import Any
+from numbers import Real
 
 
 def load_post_processing_exprs(
@@ -366,3 +367,38 @@ def get_list_of_col_names(df: pd.DataFrame, list_internal_idx: list[int]) -> lis
         raise ValueError("No coordinate columns detected in field dataframe.")
     
     return [df.columns[field_start_idx + idx] for idx in list_internal_idx]
+
+def get_geom_param_from_idx(input_df: pd.DataFrame, geometry_idx: int, param_name: str) -> float:
+    """
+    Return one geometric input parameter value for a given geometry index. Ensures the value is a real number.
+
+    :param input_df: DataFrame containing the input parameters.
+    :param geometry_idx: The index of the geometry in the input DataFrame.
+    :param param_name: The name of the parameter to retrieve.
+    :return: The value of the specified parameter for the given geometry index.
+    """
+    if geometry_idx not in input_df.index:
+        raise KeyError(f"geometry_idx {geometry_idx} not found in input_df index.")
+    if param_name not in input_df.columns:
+        raise KeyError(
+            f"Parameter '{param_name}' not found. Available: {list(input_df.columns)}"
+        )
+
+    value = input_df.loc[geometry_idx, param_name]
+
+    if isinstance(value, Real):
+        return float(value)
+
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError as exc:
+            raise TypeError(
+                f"Parameter '{param_name}' at geometry_idx {geometry_idx} "
+                f"is a non-numeric string: {value!r}."
+            ) from exc
+
+    raise TypeError(
+        f"Parameter '{param_name}' at geometry_idx {geometry_idx} must be real "
+        f"or numeric string, got {type(value).__name__}."
+    )

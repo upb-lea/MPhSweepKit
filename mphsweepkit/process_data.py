@@ -42,6 +42,7 @@ class PlotSettings:
         "upper center",
         "center",
     ] = "upper left"
+    show_title: bool = True
     use_tight_layout: bool = True
 
 
@@ -485,7 +486,8 @@ class DataPlot:
         ax.set_yscale(settings.y_scale)
         ax.set_xlabel(self._format_label_with_unit(x_label, x_unit))
         ax.set_ylabel(self._format_label_with_unit(y_label, y_unit))
-        ax.set_title(f"{y_label} over {x_label}")
+        if settings.show_title:
+            ax.set_title(f"{y_label} over {x_label}")
         if settings.show_grid:
             ax.grid(True, which=settings.grid_which, alpha=settings.grid_alpha)
 
