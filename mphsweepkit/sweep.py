@@ -185,7 +185,6 @@ class CascadedSweepModel:
             group_map=sweep_map,
         )
 
-
         # Print loop lengths
         self.sweep_loop_lengths = [
             self._get_loop_length(node) for node in self.sweep_loop_nodes
@@ -196,6 +195,9 @@ class CascadedSweepModel:
 
         # Input table changed -> reset outputs to aligned empty frame
         self._reset_outputs_to_inputs_index()
+
+        # Store derived material labels with post-processing output data.
+        self.add_material_names_to_output_data()
 
         # Add geometry_idx and internal_idx columns to the input data
         self.add_numbering_of_geometries_to_input_data()
@@ -277,6 +279,59 @@ class CascadedSweepModel:
             f"Added 'geometry_idx' and 'internal_idx' columns to input_data. "
             f"New shape: {self.input_data.shape}"
         )
+
+    def add_material_names_to_output_data(self):
+        """Add derived material-name columns to output data."""
+
+        if self.input_data is None or not isinstance(self.input_data.columns, pd.MultiIndex):
+            return
+
+        group_values = (
+            self.input_data.columns.get_level_values("group")
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+        )
+        material_columns = [
+            column
+            for column, group in zip(self.input_data.columns, group_values)
+            if group == "material sweep"
+        ]
+
+        for material_column in material_columns:
+            parameter_name = str(material_column[0])
+            parts = parameter_name.split(".")
+            if len(parts) < 3 or parts[0] != "matsw":
+                continue
+
+            component_tag, switch_tag = parts[-2:]
+            materials = self._get_component_materials(component_tag)
+            switch_material = materials.get(switch_tag)
+            switch_features = switch_material.feature()
+            material_names = [
+                str(switch_features.get(feature_tag).label())
+                for feature_tag in switch_features.tags()
+            ]
+            if not material_names:
+                continue
+
+            material_name_column = (
+                f"{parameter_name}_name",
+                "",
+                "Derived Metadata",
+            )
+            material_indices = pd.to_numeric(
+                self.input_data[material_column], errors="coerce"
+            )
+            self.output_data[material_name_column] = material_indices.map(
+                lambda value, material_names=material_names: (
+                    material_names[int(value) - 1]
+                    if pd.notna(value)
+                    and float(value).is_integer()
+                    and 1 <= int(value) <= len(material_names)
+                    else None
+                )
+            )
 
     def _get_component_materials(self, component_tag: str = "comp1"):
         """Return the COMSOL material list for a component."""
