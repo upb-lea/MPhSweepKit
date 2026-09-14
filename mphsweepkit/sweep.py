@@ -23,7 +23,18 @@ class PostProcessSpec(TypedDict):
 class CascadedSweepModel:
     """A class to work on a COMSOL model with cascaded sweeps."""
 
-    def __init__(self, model: Any, study_name: str, show_param_names: bool = False):
+    def __init__(
+        self,
+        model: Any,
+        study_name: str,
+        show_param_names: bool = False,
+        data_dir: str | Path = ".",
+    ):
+        """Initialize a cascaded sweep model.
+
+        :param data_dir: Root directory for global, field, and batch data.
+            The default is the current working directory.
+        """
         self.model = model
         self.study_name = study_name
         self.show_param_names = show_param_names
@@ -45,14 +56,15 @@ class CascadedSweepModel:
         # Set...
         # ... default dataset name for the solution.
         self.solution_dataset_name = "Cascaded Sweep Solution"
+        self.data_dir = Path(data_dir)
         # ... directories for global data (input/output tables)
-        self.dir_global_data = Path("global_data")
+        self.dir_global_data = self.data_dir / "global_data"
         self.dir_global_data.mkdir(parents=True, exist_ok=True)
         # ... directories for field data
-        self.dir_field_data = Path("field_data")
+        self.dir_field_data = self.data_dir / "field_data"
         self.dir_field_data.mkdir(parents=True, exist_ok=True)
         # ... directories for batch directory
-        self.dir_batch_data = Path("batch_data")
+        self.dir_batch_data = self.data_dir / "batch_data"
         self.dir_batch_data.mkdir(parents=True, exist_ok=True)
 
         # From the COMSOL-model, update global ...
