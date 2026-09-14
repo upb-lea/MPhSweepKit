@@ -266,6 +266,221 @@ class CascadedSweepModel:
             f"New shape: {self.input_data.shape}"
         )
 
+    def _get_component_materials(self, component_tag: str = "comp1"):
+        """Return the COMSOL material list for a component."""
+        return self.model.java.component(component_tag).material()
+
+    def _resolve_material(self, material: str, component_tag: str = "comp1"):
+        """Resolve a material or material-switch feature by tag or label."""
+        materials = self._get_component_materials(component_tag)
+
+        for material_tag in materials.tags():
+            material_entity = materials.get(material_tag)
+            if material in {str(material_tag), str(material_entity.label())}:
+                return material_entity
+
+            for feature_tag in material_entity.feature().tags():
+                feature = material_entity.feature().get(feature_tag)
+                if material in {str(feature_tag), str(feature.label())}:
+                    return feature
+
+        raise KeyError(
+            f"Material '{material}' was not found in component '{component_tag}'."
+        )
+
+    @staticmethod
+    def _read_java_properties(entity) -> dict[str, Any]:
+        """Read COMSOL properties using their Java-reported value types."""
+        getters = {
+            "boolean": "getBoolean",
+            "booleanarray": "getBooleanArray",
+            "booleanmatrix": "getBooleanMatrix",
+            "double": "getDouble",
+            "doublearray": "getDoubleArray",
+            "doublematrix": "getDoubleMatrix",
+            "file": "getString",
+            "int": "getInt",
+            "intarray": "getIntArray",
+            "intmatrix": "getIntMatrix",
+            "string": "getString",
+            "stringarray": "getStringArray",
+            "stringmatrix": "getStringMatrix",
+        }
+        values = {}
+        for property_name in entity.properties():
+            value_type = str(entity.getValueType(property_name)).lower()
+            getter_name = getters.get(value_type)
+            if getter_name is None:
+                values[property_name] = None
+                continue
+            values[property_name] = getattr(entity, getter_name)(property_name)
+        return values
+
+    def get_material_overview(
+        self,
+        component_tag: str = "comp1",
+        include_switch_features: bool = True,
+    ) -> pd.DataFrame:
+        """Return material and material-switch names, tags, and types.
+
+        Switch subfeatures are included as additional rows with their parent
+        switch tag, which makes entries such as ``N49 (LEA_MTB)`` addressable.
+        """
+        rows = []
+        materials = self._get_component_materials(component_tag)
+        for material_tag in materials.tags():
+            material = materials.get(material_tag)
+            rows.append(
+                {
+                    "name": str(material.label()),
+                    "tag": str(material_tag),
+                    "type": str(material.materialType()),
+                    "parent_tag": None,
+                }
+            )
+
+            if include_switch_features:
+                for feature_tag in material.feature().tags():
+                    feature = material.feature().get(feature_tag)
+                    rows.append(
+                        {
+                            "name": str(feature.label()),
+                            "tag": str(feature_tag),
+                            "type": str(feature.materialType()),
+                            "parent_tag": str(material_tag),
+                        }
+                    )
+        return pd.DataFrame(rows, columns=["name", "tag", "type", "parent_tag"])
+
+    def get_material_property_group_overview(
+        self,
+        material: str,
+        component_tag: str = "comp1",
+    ) -> pd.DataFrame:
+        """List the property groups available on a material.
+
+        The returned ``tag`` is the value required by methods such as
+        :meth:`get_material_properties` and
+        :meth:`get_material_function_overview`.
+        """
+        entity = self._resolve_material(material, component_tag)
+        property_groups = entity.propertyGroup()
+        rows = []
+        for group_tag in property_groups.tags():
+            group = property_groups.get(group_tag)
+            rows.append(
+                {
+                    "material": str(entity.label()),
+                    "property_group": str(group.label()),
+                    "tag": str(group_tag),
+                    "type": str(group.getType()),
+                }
+            )
+
+        return pd.DataFrame(
+            rows,
+            columns=["material", "property_group", "tag", "type"],
+        )
+
+    def get_material_function_overview(
+        self,
+        material: str,
+        property_group: str | None = None,
+        component_tag: str = "comp1",
+    ) -> pd.DataFrame:
+        """List function tags and metadata for a material property group.
+
+        If ``property_group`` is omitted, functions from every material property
+        group are returned. The function ``tag`` in the result is the value
+        required by :meth:`get_material_function_properties` and
+        :meth:`set_material_function_property`.
+        """
+        entity = self._resolve_material(material, component_tag)
+        property_groups = entity.propertyGroup()
+        group_tags = (
+            [property_group]
+            if property_group is not None
+            else [str(tag) for tag in property_groups.tags()]
+        )
+
+        rows = []
+        for group_tag in group_tags:
+            functions = property_groups.get(group_tag).func()
+            for function_tag in functions.tags():
+                function = functions.get(function_tag)
+                rows.append(
+                    {
+                        "material": str(entity.label()),
+                        "property_group": str(group_tag),
+                        "function_tag": str(function_tag),
+                        "name": str(function.label()),
+                        "type": str(function.getType()),
+                    }
+                )
+
+        return pd.DataFrame(
+            rows,
+            columns=[
+                "material",
+                "property_group",
+                "function_tag",
+                "name",
+                "type",
+            ],
+        )
+
+    def get_material_properties(
+        self,
+        material: str,
+        property_group: str = "def",
+        component_tag: str = "comp1",
+    ) -> dict[str, Any]:
+        """Return all values in a material property group."""
+        entity = self._resolve_material(material, component_tag)
+        return self._read_java_properties(entity.propertyGroup(property_group))
+
+    def set_material_property(
+        self,
+        material: str,
+        property_name: str,
+        value: Any,
+        property_group: str = "def",
+        component_tag: str = "comp1",
+    ) -> None:
+        """Set one property on a material or material-switch feature."""
+        entity = self._resolve_material(material, component_tag)
+        entity.propertyGroup(property_group).set(property_name, value)
+
+    def get_material_function_properties(
+        self,
+        material: str,
+        function_tag: str,
+        property_group: str = "MagneticLosses",
+        component_tag: str = "comp1",
+    ) -> dict[str, Any]:
+        """Return all values of a function inside a material property group."""
+        entity = self._resolve_material(material, component_tag)
+        function = entity.propertyGroup(property_group).func().get(function_tag)
+        return self._read_java_properties(function)
+
+    def set_material_function_property(
+        self,
+        material: str,
+        function_tag: str,
+        property_name: str,
+        value: Any,
+        property_group: str = "MagneticLosses",
+        component_tag: str = "comp1",
+    ) -> None:
+        """Set one property on a material property-group function.
+
+        For example, the filename of the N49 interpolation function can be
+        changed with ``property_name="filename"`` and a string path value.
+        """
+        entity = self._resolve_material(material, component_tag)
+        function = entity.propertyGroup(property_group).func().get(function_tag)
+        function.set(property_name, value)
+
     def set_material_sweep(
         self,
         sweep_name: str,
