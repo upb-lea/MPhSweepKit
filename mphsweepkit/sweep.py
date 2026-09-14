@@ -1,6 +1,7 @@
 """Provides the class to perform a cascaded sweep on a COMSOL model accessed via the MPh API."""
 
 from typing import Optional, TypedDict, NotRequired, Any, Literal
+import warnings
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -548,6 +549,50 @@ class CascadedSweepModel:
         function = entity.propertyGroup(property_group).func().get(function_tag)
         function.set(property_name, value)
 
+    def set_material_function_path(
+        self,
+        material: str,
+        property_group: str,
+        material_path: str | Path,
+        material_file_name: str,
+        component_tag: str = "comp1",
+    ) -> None:
+        """Set the filename of the first interpolation function in a property group.
+
+        The material function is resolved through the public material API, so this
+        also works for material-switch features addressed by their displayed name.
+        """
+        function_overview = self.get_material_function_overview(
+            material=material,
+            property_group=property_group,
+            component_tag=component_tag,
+        )
+        if function_overview.empty:
+            raise ValueError(
+                f"No material functions found for '{material}' in "
+                f"property group '{property_group}'."
+            )
+        if len(function_overview) > 1:
+            warnings.warn(
+                f"Found {len(function_overview)} interpolation functions for "
+                f"'{material}' in property group '{property_group}'; using the "
+                "first one.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        function_tag = str(function_overview.iloc[0]["function_tag"])
+        filename = Path(material_path) / material_file_name
+        self.set_material_function_property(
+            material=material,
+            function_tag=function_tag,
+            property_name="filename",
+            value=str(filename),
+            property_group=property_group,
+            component_tag=component_tag,
+        )
+    
+
     def set_material_sweep(
         self,
         sweep_name: str,
@@ -560,10 +605,15 @@ class CascadedSweepModel:
             raise ValueError(f"Sweep name '{sweep_name}' not found in the model.")
         sweep_index = self.sweep_loop_levels.index(sweep_name)
 
+        if sweep_type == "sparse" and any(len(row) != len(material_values[0]) for row in material_values):
+            raise ValueError(
+                "For 'sparse' sweeps, all material value rows must have the same length."
+            )
+
         set_material_sweep(
             sweep_node=self.sweep_loop_nodes[sweep_index],
             material_names=material_names,
-            material_values=np.asarray(material_values, dtype=np.float64),
+            material_values=[np.asarray(row, dtype=np.float64) for row in material_values],
             sweep_type=sweep_type,
         )
 
@@ -583,11 +633,16 @@ class CascadedSweepModel:
             raise ValueError(f"Sweep name '{sweep_name}' not found in the model.")
         sweep_index = self.sweep_loop_levels.index(sweep_name)
 
+        if sweep_type == "sparse" and any(len(row) != len(param_values[0]) for row in param_values):
+            raise ValueError(
+                "For 'sparse' sweeps, all parameter value rows must have the same length."
+            )
+
         set_parametric_sweep(
             sweep_node=self.sweep_loop_nodes[sweep_index],
             param_names=param_names,
             param_units=param_units,
-            param_values=np.asarray(param_values, dtype=np.float64),
+            param_values=[np.asarray(row, dtype=np.float64) for row in param_values],
             sweep_type=sweep_type,
         )
 

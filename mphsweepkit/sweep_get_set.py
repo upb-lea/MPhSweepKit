@@ -71,7 +71,7 @@ def set_parametric_sweep(
     sweep_node: mph.Node,
     param_names: list[str],
     param_units: list[str],
-    param_values: NDArray[np.float64],
+    param_values: list[np.ndarray],
     sweep_type: str = "sparse",
 ) -> None:
     """
@@ -91,14 +91,14 @@ def set_parametric_sweep(
 
     sweep_node.property("pname", param_names)
     sweep_node.property("punit", param_units)
-    sweep_node.property("plistarr", np.asarray(param_values, dtype=float))
+    sweep_node.property("plistarr", param_values)
     sweep_node.property("sweeptype", sweep_type)
 
 
 def set_material_sweep(
     sweep_node: mph.Node,
     material_names: list[str],
-    material_values: NDArray[np.float64],
+    material_values: list[np.ndarray],
     sweep_type: str = "sparse"
 ) -> None:
     """
@@ -113,7 +113,7 @@ def set_material_sweep(
         raise ValueError(f"Node type '{sweep_node.type()}' is not a valid material sweep node.")
 
     sweep_node.property("pname", material_names)
-    sweep_node.property("plistarr", np.asarray(material_values, dtype=float))
+    sweep_node.property("plistarr", material_values)
     sweep_node.property("sweeptype", sweep_type)
 
 
