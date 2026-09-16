@@ -16,3 +16,7 @@ _dev_data/
 .env
 .env.*
 *.mph.lock
+examples/project_sst/**/*.mph
+examples/project_sst/**/*.png
+examples/project_sst/**/*.pdf
+examples/project_sst/**/global_data/
