@@ -1,6 +1,7 @@
 """Provides the class to perform a cascaded sweep on a COMSOL model accessed via the MPh API."""
 
 from typing import Optional, TypedDict, NotRequired, Any, Literal
+import warnings
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -23,7 +24,18 @@ class PostProcessSpec(TypedDict):
 class CascadedSweepModel:
     """A class to work on a COMSOL model with cascaded sweeps."""
 
-    def __init__(self, model: Any, study_name: str, show_param_names: bool = False):
+    def __init__(
+        self,
+        model: Any,
+        study_name: str,
+        show_param_names: bool = False,
+        data_dir: str | Path = ".",
+    ):
+        """Initialize a cascaded sweep model.
+
+        :param data_dir: Root directory for global, field, and batch data.
+            The default is the current working directory.
+        """
         self.model = model
         self.study_name = study_name
         self.show_param_names = show_param_names
@@ -45,14 +57,15 @@ class CascadedSweepModel:
         # Set...
         # ... default dataset name for the solution.
         self.solution_dataset_name = "Cascaded Sweep Solution"
+        self.data_dir = Path(data_dir)
         # ... directories for global data (input/output tables)
-        self.dir_global_data = Path("global_data")
+        self.dir_global_data = self.data_dir / "global_data"
         self.dir_global_data.mkdir(parents=True, exist_ok=True)
         # ... directories for field data
-        self.dir_field_data = Path("field_data")
+        self.dir_field_data = self.data_dir / "field_data"
         self.dir_field_data.mkdir(parents=True, exist_ok=True)
         # ... directories for batch directory
-        self.dir_batch_data = Path("batch_data")
+        self.dir_batch_data = self.data_dir / "batch_data"
         self.dir_batch_data.mkdir(parents=True, exist_ok=True)
 
         # From the COMSOL-model, update global ...
@@ -173,7 +186,6 @@ class CascadedSweepModel:
             group_map=sweep_map,
         )
 
-
         # Print loop lengths
         self.sweep_loop_lengths = [
             self._get_loop_length(node) for node in self.sweep_loop_nodes
@@ -184,6 +196,9 @@ class CascadedSweepModel:
 
         # Input table changed -> reset outputs to aligned empty frame
         self._reset_outputs_to_inputs_index()
+
+        # Store derived material labels with post-processing output data.
+        self.add_material_names_to_output_data()
 
         # Add geometry_idx and internal_idx columns to the input data
         self.add_numbering_of_geometries_to_input_data()
@@ -266,6 +281,318 @@ class CascadedSweepModel:
             f"New shape: {self.input_data.shape}"
         )
 
+    def add_material_names_to_output_data(self):
+        """Add derived material-name columns to output data."""
+
+        if self.input_data is None or not isinstance(self.input_data.columns, pd.MultiIndex):
+            return
+
+        group_values = (
+            self.input_data.columns.get_level_values("group")
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+        )
+        material_columns = [
+            column
+            for column, group in zip(self.input_data.columns, group_values)
+            if group == "material sweep"
+        ]
+
+        for material_column in material_columns:
+            parameter_name = str(material_column[0])
+            parts = parameter_name.split(".")
+            if len(parts) < 3 or parts[0] != "matsw":
+                continue
+
+            component_tag, switch_tag = parts[-2:]
+            materials = self._get_component_materials(component_tag)
+            switch_material = materials.get(switch_tag)
+            switch_features = switch_material.feature()
+            material_names = [
+                str(switch_features.get(feature_tag).label())
+                for feature_tag in switch_features.tags()
+            ]
+            if not material_names:
+                continue
+
+            material_name_column = (
+                f"{parameter_name}_name",
+                "",
+                "Derived Metadata",
+            )
+            material_indices = pd.to_numeric(
+                self.input_data[material_column], errors="coerce"
+            )
+            self.output_data[material_name_column] = material_indices.map(
+                lambda value, material_names=material_names: (
+                    material_names[int(value) - 1]
+                    if pd.notna(value)
+                    and float(value).is_integer()
+                    and 1 <= int(value) <= len(material_names)
+                    else None
+                )
+            )
+
+    def _get_component_materials(self, component_tag: str = "comp1"):
+        """Return the COMSOL material list for a component."""
+        return self.model.java.component(component_tag).material()
+
+    def _resolve_material(self, material: str, component_tag: str = "comp1"):
+        """Resolve a material or material-switch feature by tag or label."""
+        materials = self._get_component_materials(component_tag)
+
+        for material_tag in materials.tags():
+            material_entity = materials.get(material_tag)
+            if material in {str(material_tag), str(material_entity.label())}:
+                return material_entity
+
+            for feature_tag in material_entity.feature().tags():
+                feature = material_entity.feature().get(feature_tag)
+                if material in {str(feature_tag), str(feature.label())}:
+                    return feature
+
+        raise KeyError(
+            f"Material '{material}' was not found in component '{component_tag}'."
+        )
+
+    @staticmethod
+    def _read_java_properties(entity) -> dict[str, Any]:
+        """Read COMSOL properties using their Java-reported value types."""
+        getters = {
+            "boolean": "getBoolean",
+            "booleanarray": "getBooleanArray",
+            "booleanmatrix": "getBooleanMatrix",
+            "double": "getDouble",
+            "doublearray": "getDoubleArray",
+            "doublematrix": "getDoubleMatrix",
+            "file": "getString",
+            "int": "getInt",
+            "intarray": "getIntArray",
+            "intmatrix": "getIntMatrix",
+            "string": "getString",
+            "stringarray": "getStringArray",
+            "stringmatrix": "getStringMatrix",
+        }
+        values = {}
+        for property_name in entity.properties():
+            value_type = str(entity.getValueType(property_name)).lower()
+            getter_name = getters.get(value_type)
+            if getter_name is None:
+                values[property_name] = None
+                continue
+            values[property_name] = getattr(entity, getter_name)(property_name)
+        return values
+
+    def get_material_overview(
+        self,
+        component_tag: str = "comp1",
+        include_switch_features: bool = True,
+    ) -> pd.DataFrame:
+        """Return material and material-switch names, tags, and types.
+
+        Switch subfeatures are included as additional rows with their parent
+        switch tag, which makes entries such as ``N49 (LEA_MTB)`` addressable.
+        """
+        rows = []
+        materials = self._get_component_materials(component_tag)
+        for material_tag in materials.tags():
+            material = materials.get(material_tag)
+            rows.append(
+                {
+                    "name": str(material.label()),
+                    "tag": str(material_tag),
+                    "type": str(material.materialType()),
+                    "parent_tag": None,
+                }
+            )
+
+            if include_switch_features:
+                for feature_tag in material.feature().tags():
+                    feature = material.feature().get(feature_tag)
+                    rows.append(
+                        {
+                            "name": str(feature.label()),
+                            "tag": str(feature_tag),
+                            "type": str(feature.materialType()),
+                            "parent_tag": str(material_tag),
+                        }
+                    )
+        return pd.DataFrame(rows, columns=["name", "tag", "type", "parent_tag"])
+
+    def get_material_property_group_overview(
+        self,
+        material: str,
+        component_tag: str = "comp1",
+    ) -> pd.DataFrame:
+        """List the property groups available on a material.
+
+        The returned ``tag`` is the value required by methods such as
+        :meth:`get_material_properties` and
+        :meth:`get_material_function_overview`.
+        """
+        entity = self._resolve_material(material, component_tag)
+        property_groups = entity.propertyGroup()
+        rows = []
+        for group_tag in property_groups.tags():
+            group = property_groups.get(group_tag)
+            rows.append(
+                {
+                    "material": str(entity.label()),
+                    "property_group": str(group.label()),
+                    "tag": str(group_tag),
+                    "type": str(group.getType()),
+                }
+            )
+
+        return pd.DataFrame(
+            rows,
+            columns=["material", "property_group", "tag", "type"],
+        )
+
+    def get_material_function_overview(
+        self,
+        material: str,
+        property_group: str | None = None,
+        component_tag: str = "comp1",
+    ) -> pd.DataFrame:
+        """List function tags and metadata for a material property group.
+
+        If ``property_group`` is omitted, functions from every material property
+        group are returned. The function ``tag`` in the result is the value
+        required by :meth:`get_material_function_properties` and
+        :meth:`set_material_function_property`.
+        """
+        entity = self._resolve_material(material, component_tag)
+        property_groups = entity.propertyGroup()
+        group_tags = (
+            [property_group]
+            if property_group is not None
+            else [str(tag) for tag in property_groups.tags()]
+        )
+
+        rows = []
+        for group_tag in group_tags:
+            functions = property_groups.get(group_tag).func()
+            for function_tag in functions.tags():
+                function = functions.get(function_tag)
+                rows.append(
+                    {
+                        "material": str(entity.label()),
+                        "property_group": str(group_tag),
+                        "function_tag": str(function_tag),
+                        "name": str(function.label()),
+                        "type": str(function.getType()),
+                    }
+                )
+
+        return pd.DataFrame(
+            rows,
+            columns=[
+                "material",
+                "property_group",
+                "function_tag",
+                "name",
+                "type",
+            ],
+        )
+
+    def get_material_properties(
+        self,
+        material: str,
+        property_group: str = "def",
+        component_tag: str = "comp1",
+    ) -> dict[str, Any]:
+        """Return all values in a material property group."""
+        entity = self._resolve_material(material, component_tag)
+        return self._read_java_properties(entity.propertyGroup(property_group))
+
+    def set_material_property(
+        self,
+        material: str,
+        property_name: str,
+        value: Any,
+        property_group: str = "def",
+        component_tag: str = "comp1",
+    ) -> None:
+        """Set one property on a material or material-switch feature."""
+        entity = self._resolve_material(material, component_tag)
+        entity.propertyGroup(property_group).set(property_name, value)
+
+    def get_material_function_properties(
+        self,
+        material: str,
+        function_tag: str,
+        property_group: str = "MagneticLosses",
+        component_tag: str = "comp1",
+    ) -> dict[str, Any]:
+        """Return all values of a function inside a material property group."""
+        entity = self._resolve_material(material, component_tag)
+        function = entity.propertyGroup(property_group).func().get(function_tag)
+        return self._read_java_properties(function)
+
+    def set_material_function_property(
+        self,
+        material: str,
+        function_tag: str,
+        property_name: str,
+        value: Any,
+        property_group: str = "MagneticLosses",
+        component_tag: str = "comp1",
+    ) -> None:
+        """Set one property on a material property-group function.
+
+        For example, the filename of the N49 interpolation function can be
+        changed with ``property_name="filename"`` and a string path value.
+        """
+        entity = self._resolve_material(material, component_tag)
+        function = entity.propertyGroup(property_group).func().get(function_tag)
+        function.set(property_name, value)
+
+    def set_material_function_path(
+        self,
+        material: str,
+        property_group: str,
+        material_path: str | Path,
+        material_file_name: str,
+        component_tag: str = "comp1",
+    ) -> None:
+        """Set the filename of the first interpolation function in a property group.
+
+        The material function is resolved through the public material API, so this
+        also works for material-switch features addressed by their displayed name.
+        """
+        function_overview = self.get_material_function_overview(
+            material=material,
+            property_group=property_group,
+            component_tag=component_tag,
+        )
+        if function_overview.empty:
+            raise ValueError(
+                f"No material functions found for '{material}' in "
+                f"property group '{property_group}'."
+            )
+        if len(function_overview) > 1:
+            warnings.warn(
+                f"Found {len(function_overview)} interpolation functions for "
+                f"'{material}' in property group '{property_group}'; using the "
+                "first one.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        function_tag = str(function_overview.iloc[0]["function_tag"])
+        filename = Path(material_path) / material_file_name
+        self.set_material_function_property(
+            material=material,
+            function_tag=function_tag,
+            property_name="filename",
+            value=str(filename),
+            property_group=property_group,
+            component_tag=component_tag,
+        )
+    
+
     def set_material_sweep(
         self,
         sweep_name: str,
@@ -278,10 +605,15 @@ class CascadedSweepModel:
             raise ValueError(f"Sweep name '{sweep_name}' not found in the model.")
         sweep_index = self.sweep_loop_levels.index(sweep_name)
 
+        if sweep_type == "sparse" and any(len(row) != len(material_values[0]) for row in material_values):
+            raise ValueError(
+                "For 'sparse' sweeps, all material value rows must have the same length."
+            )
+
         set_material_sweep(
             sweep_node=self.sweep_loop_nodes[sweep_index],
             material_names=material_names,
-            material_values=np.asarray(material_values, dtype=np.float64),
+            material_values=[np.asarray(row, dtype=np.float64) for row in material_values],
             sweep_type=sweep_type,
         )
 
@@ -301,11 +633,16 @@ class CascadedSweepModel:
             raise ValueError(f"Sweep name '{sweep_name}' not found in the model.")
         sweep_index = self.sweep_loop_levels.index(sweep_name)
 
+        if sweep_type == "sparse" and any(len(row) != len(param_values[0]) for row in param_values):
+            raise ValueError(
+                "For 'sparse' sweeps, all parameter value rows must have the same length."
+            )
+
         set_parametric_sweep(
             sweep_node=self.sweep_loop_nodes[sweep_index],
             param_names=param_names,
             param_units=param_units,
-            param_values=np.asarray(param_values, dtype=np.float64),
+            param_values=[np.asarray(row, dtype=np.float64) for row in param_values],
             sweep_type=sweep_type,
         )
 

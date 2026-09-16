@@ -508,3 +508,137 @@ class DataPlot:
         # Apply tight layout to the figure if enabled in settings.
         if settings.use_tight_layout:
             plt.tight_layout()
+
+    def ratio_plot(
+        self,
+        ax: Axes,
+        y_col: str = "p_loss",
+        x_col: str = "freq",
+        split_col: str = "cut_switch",
+        numerator_value: Any = "cylinder",
+        denominator_value: Any = "cuboid",
+        color_col: str = "w",
+        style_col: str = "b_mean",
+        filters: dict[str, list[Any] | tuple[Any, ...] | set[Any]] | None = None,
+        settings: PlotSettings | None = None,
+        text_overrides: PlotTextOverrides | None = None,
+    ) -> None:
+        """Plot ratio y_num(x) / y_den(x) with style grouping.
+
+        The ratio is formed by splitting rows via ``split_col`` into
+        ``numerator_value`` and ``denominator_value`` groups, aligning both on
+        ``x_col`` (inner join), and plotting one line per ``style_col`` value.
+        """
+        settings = settings or PlotSettings()
+        text_overrides = text_overrides or PlotTextOverrides()
+
+        x_key = self._resolve_column_key(x_col)
+        y_key = self._resolve_column_key(y_col)
+        split_key = self._resolve_column_key(split_col)
+        color_key = self._resolve_column_key(color_col)
+        style_key = self._resolve_column_key(style_col)
+
+        color_title, color_unit = self._legend_title_and_unit(color_col, color_key)
+        color_title, color_unit = self._apply_text_override(
+            color_title,
+            color_unit,
+            text_overrides.color_label,
+            text_overrides.color_unit,
+        )
+
+        style_title, style_unit = self._legend_title_and_unit(style_col, style_key)
+        style_title, style_unit = self._apply_text_override(
+            style_title,
+            style_unit,
+            text_overrides.style_label,
+            text_overrides.style_unit,
+        )
+
+        x_label, x_unit = self._label_and_unit(x_col)
+        x_label, x_unit = self._apply_text_override(
+            x_label,
+            x_unit,
+            text_overrides.x_label,
+            text_overrides.x_unit,
+        )
+
+        y_label = f"{self._fmt_legend_value(numerator_value)} / {self._fmt_legend_value(denominator_value)}"
+        y_unit = None
+        y_label, y_unit = self._apply_text_override(
+            y_label,
+            y_unit,
+            text_overrides.y_label,
+            text_overrides.y_unit,
+        )
+
+        source = self.filter_rows(filters) if filters else self
+        df = source.combined_df.copy()
+        df = df.loc[~df.index.astype(str).str.lower().isin(METADATA_ROW_NAMES)]
+        df[x_key] = pd.to_numeric(df[x_key], errors="coerce")
+        df[y_key] = pd.to_numeric(df[y_key], errors="coerce")
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.dropna(subset=[x_key, y_key, split_key, color_key, style_key])
+
+        if df.empty:
+            return
+
+        color_values, style_values, color_map, style_map = self._build_style_maps(
+            df,
+            color_key,
+            style_key,
+            settings,
+        )
+
+        has_any_line = False
+        for (cval, sval), group in df.groupby([color_key, style_key], sort=True):
+            num_df = group[group[split_key] == numerator_value][[x_key, y_key]].rename(columns={y_key: "__num"})
+            den_df = group[group[split_key] == denominator_value][[x_key, y_key]].rename(columns={y_key: "__den"})
+
+            merged = num_df.merge(den_df, on=x_key, how="inner").sort_values(x_key)
+            if merged.empty:
+                continue
+
+            merged = merged.dropna(subset=["__num", "__den"])
+            merged = merged[merged["__den"] != 0]
+            if merged.empty:
+                continue
+
+            ratio = merged["__num"].to_numpy(float) / merged["__den"].to_numpy(float)
+            ax.plot(
+                merged[x_key].to_numpy(float),
+                ratio,
+                marker=settings.marker,
+                ms=settings.marker_size,
+                lw=settings.line_width,
+                color=color_map[cval],
+                linestyle=style_map[sval],
+            )
+            has_any_line = True
+
+        if not has_any_line:
+            return
+
+        ax.set_xscale(settings.x_scale)
+        ax.set_yscale(settings.y_scale)
+        ax.set_xlabel(self._format_label_with_unit(x_label, x_unit))
+        ax.set_ylabel(self._format_label_with_unit(y_label, y_unit))
+        if settings.show_title:
+            ax.set_title(f"{y_label} over {x_label}")
+        if settings.show_grid:
+            ax.grid(True, which=settings.grid_which, alpha=settings.grid_alpha)
+
+        self._add_legends(
+            ax=ax,
+            color_values=color_values,
+            style_values=style_values,
+            color_map=color_map,
+            style_map=style_map,
+            color_title=color_title,
+            style_title=style_title,
+            color_unit=color_unit,
+            style_unit=style_unit,
+            settings=settings,
+        )
+
+        if settings.use_tight_layout:
+            plt.tight_layout()
