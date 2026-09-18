@@ -1,7 +1,7 @@
 """Initialize the mphsweepkit package."""
 
 from .meta_tex import *
-from .process_data import DataPlot, PlotSettings
+from .process_data import DataPlot, PlotSettings, PlotTextOverrides, synchronize_axes
 from .process_derive import *
 from .process_fields import *
 from .process_helpers import *

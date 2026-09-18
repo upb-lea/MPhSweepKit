@@ -1,10 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from collections.abc import Callable
-from typing import Any, Literal, cast
+from typing import Any, Literal, Mapping, cast
 from pathlib import Path
 import numpy as np
 import pandas as pd
 from matplotlib.axes import Axes
+from matplotlib.colors import to_rgba
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
@@ -22,7 +23,10 @@ class PlotSettings:
     grid_which: Literal["major", "minor", "both"] = "both"
     grid_alpha: float = 0.3
     line_width: float = 1.8
+    line_alpha: float | None = None
+    marker_alpha: float | None = None
     color_map_name: str = "viridis"
+    color_map: Mapping[Any, Any] | None = None
     line_styles: tuple[str, ...] = ("-", "--", "-.", ":")
     marker_styles: tuple[str | None, ...] = (None,)
     show_color_legend: bool = True
@@ -58,6 +62,44 @@ class PlotTextOverrides:
     color_unit: str | None = None
     style_label: str | None = None
     style_unit: str | None = None
+
+
+def synchronize_axes(
+    axes: Any,
+    *,
+    x: bool = True,
+    y: bool = True,
+    share_x: bool | None = None,
+    share_y: bool | None = None,
+) -> None:
+    """Use common limits for a collection of Matplotlib axes.
+
+    ``share_x`` and ``share_y`` are explicit aliases for ``x`` and ``y``.
+    When provided, they take precedence and mirror Matplotlib's ``sharex``
+    and ``sharey`` terminology.
+    """
+    if share_x is not None:
+        x = share_x
+    if share_y is not None:
+        y = share_y
+
+    axes = np.asarray(axes, dtype=object).reshape(-1).tolist()
+    if not axes:
+        return
+
+    if x:
+        x_limits = [axis.get_xlim() for axis in axes]
+        x_min = min(limit[0] for limit in x_limits)
+        x_max = max(limit[1] for limit in x_limits)
+        for axis in axes:
+            axis.set_xlim(x_min, x_max)
+
+    if y:
+        y_limits = [axis.get_ylim() for axis in axes]
+        y_min = min(limit[0] for limit in y_limits)
+        y_max = max(limit[1] for limit in y_limits)
+        for axis in axes:
+            axis.set_ylim(y_min, y_max)
 
 
 class DataPlot:
@@ -392,8 +434,18 @@ class DataPlot:
         color_values = sorted(df[color_key].unique(), key=self._sort_key)
         style_values = sorted(df[style_key].unique(), key=self._sort_key)
 
-        cmap = plt.get_cmap(settings.color_map_name, len(color_values))
-        color_map = {value: cmap(i) for i, value in enumerate(color_values)}
+        if settings.color_map is not None:
+            missing_colors = [value for value in color_values if value not in settings.color_map]
+            if missing_colors:
+                raise ValueError(
+                    f"Custom color map is missing values: {missing_colors}"
+                )
+            color_map = {
+                value: settings.color_map[value] for value in color_values
+            }
+        else:
+            cmap = plt.get_cmap(settings.color_map_name, len(color_values))
+            color_map = {value: cmap(i) for i, value in enumerate(color_values)}
 
         line_styles = list(settings.line_styles) if settings.line_styles else ["-"]
         marker_styles = list(settings.marker_styles) if settings.marker_styles else [None]
@@ -509,9 +561,18 @@ class DataPlot:
                 g[x_key].to_numpy(float),
                 g[y_key].to_numpy(float),
                 lw=settings.line_width,
-                color=color_map[cval],
+                color=(
+                    to_rgba(color_map[cval], settings.line_alpha)
+                    if settings.line_alpha is not None
+                    else color_map[cval]
+                ),
                 linestyle=style_map[sval],
                 marker=marker_map[sval],
+                markerfacecolor=(
+                    to_rgba(color_map[cval], settings.marker_alpha)
+                    if settings.marker_alpha is not None
+                    else color_map[cval]
+                ),
             )
 
         # Configure axis scales, labels, title, and grid based on settings and overrides.
@@ -542,6 +603,136 @@ class DataPlot:
         # Apply tight layout to the figure if enabled in settings.
         if settings.use_tight_layout:
             plt.tight_layout()
+
+    def measurement_vs_simulation(
+        self,
+        ax: Axes,
+        measurement_df: pd.DataFrame,
+        measurement_groups: Mapping[str, Mapping[str, Any]],
+        *,
+        y_col: str = "p_loss",
+        x_col: str = "freq",
+        color_col: str = "w",
+        style_col: str = "b_mean",
+        measurement_x_col: str = "f",
+        measurement_y_col: str = "p_total",
+        measurement_range_offset: int = 0,
+        settings: PlotSettings | None = None,
+        text_overrides: PlotTextOverrides | None = None,
+        measurement_legend_title: str = "Measurements",
+        measurement_legend_anchor: tuple[float, float] = (1.02, 0),
+        measurement_legend_loc: str = "lower left",
+        measurement_line_alpha: float | None = None,
+        measurement_marker_alpha: float | None = None,
+        show_simulation_color_legend: bool = False,
+        show_simulation_style_legend: bool = True,
+        show_measurement_legend: bool = True,
+        show_x_label: bool = True,
+        show_y_label: bool = True,
+    ) -> None:
+        """Plot simulation data together with grouped measurement series.
+
+        ``measurement_groups`` maps display labels to dictionaries containing
+        ``ranges`` of inclusive positional row pairs and Matplotlib style
+        values such as ``color``, ``markerstyle`` and ``linestyle``.
+        ``measurement_range_offset`` converts those row numbers to positions
+        in ``measurement_df``; for one-based ranges with two header rows use
+        ``-2``.
+
+        Comparison-specific legends and labels are controlled here instead of
+        by the generic simulation settings. By default, the simulation color
+        legend is hidden because it commonly represents the subplot variable,
+        while the style and measurement legends remain visible.
+        """
+        simulation_settings = replace(
+            settings or PlotSettings(),
+            show_color_legend=show_simulation_color_legend,
+            show_style_legend=show_simulation_style_legend,
+        )
+        self.y_over_x_with_color_and_style(
+            ax=ax,
+            y_col=y_col,
+            x_col=x_col,
+            color_col=color_col,
+            style_col=style_col,
+            settings=simulation_settings,
+            text_overrides=text_overrides,
+        )
+
+        if not show_x_label:
+            ax.set_xlabel("")
+        if not show_y_label:
+            ax.set_ylabel("")
+
+        measurement = measurement_df.copy()
+        measurement[measurement_x_col] = pd.to_numeric(
+            measurement[measurement_x_col], errors="coerce"
+        )
+        measurement[measurement_y_col] = pd.to_numeric(
+            measurement[measurement_y_col], errors="coerce"
+        )
+
+        legend_handles = []
+        for label, group in measurement_groups.items():
+            line_alpha = group.get("line_alpha", measurement_line_alpha)
+            marker_alpha = group.get("marker_alpha", measurement_marker_alpha)
+            marker_color = group.get("color", "black")
+            legend_handles.append(
+                Line2D(
+                    [0],
+                    [0],
+                    color=(
+                        to_rgba(marker_color, line_alpha)
+                        if line_alpha is not None
+                        else marker_color
+                    ),
+                    linestyle=group.get("linestyle", "-"),
+                    marker=group.get("markerstyle"),
+                    markerfacecolor=(
+                        to_rgba(marker_color, marker_alpha)
+                        if marker_alpha is not None
+                        else marker_color
+                    ),
+                    markeredgecolor=group.get("markeredgecolor", "black"),
+                    markeredgewidth=group.get("markeredgewidth", 0.8),
+                    label=label,
+                )
+            )
+            for first, last in group["ranges"]:
+                start = first + measurement_range_offset
+                stop = last + measurement_range_offset + 1
+                series = measurement.iloc[start:stop].dropna(
+                    subset=[measurement_x_col, measurement_y_col]
+                )
+                ax.plot(
+                    series[measurement_x_col],
+                    series[measurement_y_col],
+                    group.get("linestyle", "-"),
+                    color=(
+                        to_rgba(marker_color, line_alpha)
+                        if line_alpha is not None
+                        else marker_color
+                    ),
+                    marker=group.get("markerstyle"),
+                    markerfacecolor=(
+                        to_rgba(marker_color, marker_alpha)
+                        if marker_alpha is not None
+                        else marker_color
+                    ),
+                    markeredgecolor=group.get("markeredgecolor", "black"),
+                    markeredgewidth=group.get("markeredgewidth", 0.8),
+                )
+
+        if show_measurement_legend:
+            current_legend = ax.get_legend()
+            if current_legend is not None:
+                ax.add_artist(current_legend)
+            ax.legend(
+                handles=legend_handles,
+                title=measurement_legend_title,
+                bbox_to_anchor=measurement_legend_anchor,
+                loc=measurement_legend_loc,
+            )
 
     def ratio_plot(
         self,
@@ -645,6 +836,11 @@ class DataPlot:
                 color=color_map[cval],
                 linestyle=style_map[sval],
                 marker=marker_map[sval],
+                markerfacecolor=(
+                    to_rgba(color_map[cval], settings.marker_alpha)
+                    if settings.marker_alpha is not None
+                    else None
+                ),
             )
             has_any_line = True
 

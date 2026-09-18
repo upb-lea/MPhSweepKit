@@ -27,6 +27,8 @@ Core API
 - ``create_dataset_selection(...)``
 - ``export_dataset_with_expressions(...)`` -> exports field data directly calculated on a (sub-)dataset selection, e.g. a geometry or a surface
 - ``get_comsol_looplevels()`` -> walks through the COMSOL model tree of a cascaded sweep
+- ``DataPlot.measurement_vs_simulation(...)`` -> overlays grouped measurement series on simulation plots
+- ``synchronize_axes(...)`` -> applies common x/y limits to a collection of plot axes
 
 Typical workflow 
 -------------------
