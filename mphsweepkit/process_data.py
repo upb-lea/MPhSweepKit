@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any, Literal, cast
 from pathlib import Path
 import numpy as np
@@ -154,6 +155,28 @@ class DataPlot:
         """Return all available combined-column names."""
         return list(self.combined_df.columns)
 
+    def _copy_with_index(self, selected_index: pd.Index) -> "DataPlot":
+        """Return a filtered copy while preserving derived combined columns."""
+        filtered_input = self.input_df.loc[
+            self.input_df.index.intersection(selected_index)
+        ].copy()
+        filtered_output = self.output_df.loc[
+            self.output_df.index.intersection(selected_index)
+        ].copy()
+
+        result = DataPlot(
+            input_df=filtered_input,
+            output_df=filtered_output,
+            folder=self.folder,
+        )
+        metadata_index = self.combined_df.index.astype(str).str.lower().isin(
+            METADATA_ROW_NAMES
+        )
+        result.combined_df = self.combined_df.loc[
+            metadata_index | self.combined_df.index.isin(selected_index)
+        ].copy()
+        return result
+
     def filter_rows(
         self,
         filters: dict[str, list[Any] | tuple[Any, ...] | set[Any]],
@@ -173,28 +196,16 @@ class DataPlot:
             string-vs-numeric storage differences.
         """
         if not filters:
-            return DataPlot(
-                input_df=self.input_df.copy(),
-                output_df=self.output_df.copy(),
-                folder=self.folder,
-            )
+            return self._copy_with_index(self.combined_df.index)
 
         if self.combined_df.empty:
-            return DataPlot(
-                input_df=self.input_df.copy(),
-                output_df=self.output_df.copy(),
-                folder=self.folder,
-            )
+            return self._copy_with_index(self.combined_df.index)
 
         plot_df = self.combined_df.copy()
         plot_df = plot_df.loc[~plot_df.index.astype(str).str.lower().isin(METADATA_ROW_NAMES)]
 
         if plot_df.empty:
-            return DataPlot(
-                input_df=self.input_df.iloc[0:0].copy(),
-                output_df=self.output_df.iloc[0:0].copy(),
-                folder=self.folder,
-            )
+            return self._copy_with_index(plot_df.index)
 
         mask = pd.Series(True, index=plot_df.index)
 
@@ -215,14 +226,28 @@ class DataPlot:
 
         selected_index = plot_df.index[mask]
 
-        filtered_input = self.input_df.loc[self.input_df.index.intersection(selected_index)].copy()
-        filtered_output = self.output_df.loc[self.output_df.index.intersection(selected_index)].copy()
+        return self._copy_with_index(selected_index)
 
-        return DataPlot(
-            input_df=filtered_input,
-            output_df=filtered_output,
-            folder=self.folder,
-        )
+    def where(self, predicate: Callable[[pd.DataFrame], pd.Series]) -> "DataPlot":
+        """Return a new ``DataPlot`` containing rows selected by ``predicate``.
+
+        Use ``filter_rows`` for exact categorical selections and this method for
+        arbitrary conditions such as numeric ranges. The source object is not
+        modified.
+        """
+        plot_df = self.combined_df.copy()
+        plot_df = plot_df.loc[~plot_df.index.astype(str).str.lower().isin(METADATA_ROW_NAMES)]
+
+        if plot_df.empty:
+            return self._copy_with_index(plot_df.index)
+
+        mask = predicate(plot_df)
+        if not isinstance(mask, pd.Series):
+            raise TypeError("predicate must return a pandas Series")
+
+        mask = mask.reindex(plot_df.index, fill_value=False).fillna(False).astype(bool)
+        selected_index = plot_df.index[mask]
+        return self._copy_with_index(selected_index)
 
     def assert_columns_exist(self, columns: list[str]) -> None:
         """Raise KeyError when one or more columns are not available."""

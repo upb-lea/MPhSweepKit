@@ -10,6 +10,15 @@ def _as_complex_series(df, source_col):
     return pd.to_numeric(df[source_col], errors="coerce").astype(complex)
 
 
+def _as_dtype_series(df, source_col, dtype):
+    values = _as_complex_series(df, source_col)
+    if dtype == "complex":
+        return values
+    if dtype == "real":
+        return np.real(values)
+    raise ValueError("dtype must be either 'complex' or 'real'")
+
+
 def _data_mask(df):
     return ~df.index.astype(str).str.lower().isin(METADATA_ROW_NAMES)
 
@@ -30,8 +39,10 @@ def _set_meta(df, col, unit, group="Derived"):
     df.loc["group", col] = group
 
 
-def _add_derived(df, source_col, new_col, unit, transform, group="Derived"):
-    z = _as_complex_series(df, source_col)
+def _add_derived(
+    df, source_col, new_col, unit, transform, group="Derived", dtype="complex"
+):
+    z = _as_dtype_series(df, source_col, dtype)
     values = transform(z)
 
     _init_derived_column(df, new_col)
@@ -47,6 +58,28 @@ def from_single_column(df, source_col, new_col, unit, transform, group="Derived"
     Example transform: lambda z: np.real(z) + np.imag(z)
     """
     return _add_derived(df, source_col, new_col, unit, transform, group=group)
+
+
+def convert_unit(
+    df, source_col, new_col, unit, factor, group="Derived", dtype="complex"
+):
+    """Convert a column by multiplying its data values by ``factor``.
+
+    ``factor`` converts values from the source unit to ``unit``. For example,
+    use ``factor=1e-3`` for Hz to kHz or mT to T.
+
+    ``dtype`` selects whether the converted values are ``"complex"`` or
+    ``"real"``. Real conversion uses the real component of complex input.
+    """
+    return _add_derived(
+        df,
+        source_col,
+        new_col,
+        unit,
+        lambda values: values * factor,
+        group=group,
+        dtype=dtype,
+    )
 
 
 # General multi-column derived data functions
