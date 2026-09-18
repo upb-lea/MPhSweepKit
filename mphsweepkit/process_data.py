@@ -20,11 +20,10 @@ class PlotSettings:
     show_grid: bool = True
     grid_which: Literal["major", "minor", "both"] = "both"
     grid_alpha: float = 0.3
-    marker: str = "o"
-    marker_size: float = 4
     line_width: float = 1.8
     color_map_name: str = "viridis"
     line_styles: tuple[str, ...] = ("-", "--", "-.", ":")
+    marker_styles: tuple[str | None, ...] = (None,)
     show_color_legend: bool = True
     show_style_legend: bool = True
     color_legend_anchor: tuple[float, float] = (1.02, 1)
@@ -357,7 +356,13 @@ class DataPlot:
         color_key: Any,
         style_key: Any,
         settings: PlotSettings,
-    ) -> tuple[list[Any], list[Any], dict[Any, Any], dict[Any, str]]:
+    ) -> tuple[
+        list[Any],
+        list[Any],
+        dict[Any, Any],
+        dict[Any, str],
+        dict[Any, str | None],
+    ]:
         """Create ordered color/style values and corresponding matplotlib maps."""
         color_values = sorted(df[color_key].unique(), key=self._sort_key)
         style_values = sorted(df[style_key].unique(), key=self._sort_key)
@@ -365,9 +370,11 @@ class DataPlot:
         cmap = plt.get_cmap(settings.color_map_name, len(color_values))
         color_map = {value: cmap(i) for i, value in enumerate(color_values)}
 
-        linestyles = list(settings.line_styles) if settings.line_styles else ["-"]
-        style_map = {value: linestyles[i % len(linestyles)] for i, value in enumerate(style_values)}
-        return color_values, style_values, color_map, style_map
+        line_styles = list(settings.line_styles) if settings.line_styles else ["-"]
+        marker_styles = list(settings.marker_styles) if settings.marker_styles else [None]
+        line_map = {value: line_styles[i % len(line_styles)] for i, value in enumerate(style_values)}
+        marker_map = {value: marker_styles[i % len(marker_styles)] for i, value in enumerate(style_values)}
+        return color_values, style_values, color_map, line_map, marker_map
 
     def _add_legends(
         self,
@@ -376,6 +383,7 @@ class DataPlot:
         style_values: list[Any],
         color_map: dict[Any, Any],
         style_map: dict[Any, str],
+        marker_map: dict[Any, str | None],
         color_title: str,
         style_title: str,
         color_unit: str | None,
@@ -392,9 +400,7 @@ class DataPlot:
                     [0],
                     [0],
                     color=color_map[value],
-                    marker=settings.marker,
                     lw=2,
-                    ms=settings.marker_size,
                     label=f"{self._fmt_legend_value(value)}{color_suffix}",
                 )
                 for value in color_values
@@ -414,6 +420,7 @@ class DataPlot:
                     [0],
                     color="black",
                     linestyle=cast(Any, style_map[value]),
+                    marker=cast(Any, marker_map[value]),
                     lw=2,
                     label=f"{self._fmt_legend_value(value)}{style_suffix}",
                 )
@@ -466,7 +473,9 @@ class DataPlot:
             return
 
         # Build color and style maps for the unique values in the filtered dataframe.
-        color_values, style_values, color_map, style_map = self._build_style_maps(df, color_key, style_key, settings)
+        color_values, style_values, color_map, style_map, marker_map = self._build_style_maps(
+            df, color_key, style_key, settings
+        )
 
         # Plot each group of (color, style) values as a separate line on the axis.
         for (cval, sval), g in df.groupby([color_key, style_key], sort=True):
@@ -474,11 +483,10 @@ class DataPlot:
             ax.plot(
                 g[x_key].to_numpy(float),
                 g[y_key].to_numpy(float),
-                marker=settings.marker,
-                ms=settings.marker_size,
                 lw=settings.line_width,
                 color=color_map[cval],
                 linestyle=style_map[sval],
+                marker=marker_map[sval],
             )
 
         # Configure axis scales, labels, title, and grid based on settings and overrides.
@@ -498,6 +506,7 @@ class DataPlot:
             style_values=style_values,
             color_map=color_map,
             style_map=style_map,
+            marker_map=marker_map,
             color_title=color_title,
             style_title=style_title,
             color_unit=color_unit,
@@ -582,7 +591,7 @@ class DataPlot:
         if df.empty:
             return
 
-        color_values, style_values, color_map, style_map = self._build_style_maps(
+        color_values, style_values, color_map, style_map, marker_map = self._build_style_maps(
             df,
             color_key,
             style_key,
@@ -607,11 +616,10 @@ class DataPlot:
             ax.plot(
                 merged[x_key].to_numpy(float),
                 ratio,
-                marker=settings.marker,
-                ms=settings.marker_size,
                 lw=settings.line_width,
                 color=color_map[cval],
                 linestyle=style_map[sval],
+                marker=marker_map[sval],
             )
             has_any_line = True
 
@@ -633,6 +641,7 @@ class DataPlot:
             style_values=style_values,
             color_map=color_map,
             style_map=style_map,
+            marker_map=marker_map,
             color_title=color_title,
             style_title=style_title,
             color_unit=color_unit,
