@@ -33,6 +33,8 @@ class PlotSettings:
     show_style_legend: bool = True
     color_legend_anchor: tuple[float, float] = (1.02, 1)
     style_legend_anchor: tuple[float, float] = (1.02, 0.45)
+    style_legend_color: Any = "black"
+    style_value_labels: Mapping[Any, str] | None = None
     legend_loc: Literal[
         "best",
         "upper right",
@@ -62,6 +64,21 @@ class PlotTextOverrides:
     color_unit: str | None = None
     style_label: str | None = None
     style_unit: str | None = None
+
+
+def monotonic_ranges(
+    frame: pd.DataFrame,
+    column: str,
+) -> list[tuple[int, int]]:
+    """Return inclusive positional ranges for consecutive increasing values."""
+    positions = frame.index.to_numpy()
+    values = pd.to_numeric(frame[column], errors="raise").to_numpy()
+    split_points = np.flatnonzero(np.diff(values) <= 0) + 1
+    return [
+        (int(chunk[0]), int(chunk[-1]))
+        for chunk in np.split(positions, split_points)
+        if len(chunk)
+    ]
 
 
 def synchronize_axes(
@@ -495,11 +512,15 @@ class DataPlot:
                 Line2D(
                     [0],
                     [0],
-                    color="black",
+                    color=settings.style_legend_color,
                     linestyle=cast(Any, style_map[value]),
                     marker=cast(Any, marker_map[value]),
                     lw=2,
-                    label=f"{self._fmt_legend_value(value)}{style_suffix}",
+                    label=(
+                        settings.style_value_labels.get(value, str(value))
+                        if settings.style_value_labels is not None
+                        else self._fmt_legend_value(value)
+                    ) + style_suffix,
                 )
                 for value in style_values
             ]
@@ -733,6 +754,26 @@ class DataPlot:
                 bbox_to_anchor=measurement_legend_anchor,
                 loc=measurement_legend_loc,
             )
+
+    @staticmethod
+    def measurement_legend_handles(
+        measurement_groups: Mapping[str, Mapping[str, Any]],
+    ) -> list[Line2D]:
+        """Create legend handles for measurement groups."""
+        return [
+            Line2D(
+                [0],
+                [0],
+                color=group["color"],
+                linestyle=group["linestyle"],
+                marker=group["markerstyle"],
+                markerfacecolor=group["color"],
+                markeredgecolor="black",
+                markeredgewidth=0.8,
+                label=label,
+            )
+            for label, group in measurement_groups.items()
+        ]
 
     def ratio_plot(
         self,
