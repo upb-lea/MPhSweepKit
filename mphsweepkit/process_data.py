@@ -8,6 +8,7 @@ from matplotlib.axes import Axes
 from matplotlib.colors import to_rgba
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
 # Import of meta data
 from .meta_names import METADATA_ROW_NAMES
@@ -430,7 +431,8 @@ class DataPlot:
         df = df.loc[~df.index.astype(str).str.lower().isin(METADATA_ROW_NAMES)]
         df[x_key] = pd.to_numeric(df[x_key], errors="coerce")
         df[y_key] = pd.to_numeric(df[y_key], errors="coerce")
-        df = df.replace([np.inf, -np.inf], np.nan)
+        df[x_key] = df[x_key].mask(np.isinf(df[x_key]))
+        df[y_key] = df[y_key].mask(np.isinf(df[y_key]))
         df = df.dropna(subset=[x_key, y_key, color_key, style_key])
         return df
 
@@ -625,6 +627,50 @@ class DataPlot:
         if settings.use_tight_layout:
             plt.tight_layout()
 
+    def stacked_y_over_x(
+        self,
+        ax: Axes,
+        y_cols: tuple[str, ...],
+        *,
+        x_col: str = "freq",
+        filters: dict[str, list[Any] | tuple[Any, ...] | set[Any]] | None = None,
+        colors: tuple[Any, ...] = (),
+        labels: tuple[str, ...] = (),
+        alpha: float = 0.35,
+    ) -> list[Patch]:
+        """Plot multiple quantities as a stacked area over ``x_col``."""
+        if not y_cols:
+            return []
+        if colors and len(colors) != len(y_cols):
+            raise ValueError("colors must match the number of y_cols")
+        if labels and len(labels) != len(y_cols):
+            raise ValueError("labels must match the number of y_cols")
+
+        source = self.filter_rows(filters) if filters else self
+        x_key = source._resolve_column_key(x_col)
+        y_keys = [source._resolve_column_key(column) for column in y_cols]
+        df = source.combined_df.copy()
+        df = df.loc[~df.index.astype(str).str.lower().isin(METADATA_ROW_NAMES)]
+        df[x_key] = pd.to_numeric(df[x_key], errors="coerce")
+        for y_key in y_keys:
+            df[y_key] = pd.to_numeric(df[y_key], errors="coerce")
+        df = df.dropna(subset=[x_key, *y_keys]).sort_values(x_key)
+        if df.empty:
+            return []
+
+        effective_colors = colors or tuple(f"C{index}" for index in range(len(y_cols)))
+        effective_labels = labels or y_cols
+        ax.stackplot(
+            df[x_key].to_numpy(float),
+            *(df[y_key].to_numpy(float) for y_key in y_keys),
+            colors=effective_colors,
+            alpha=alpha,
+        )
+        return [
+            Patch(facecolor=color, alpha=alpha, label=label)
+            for color, label in zip(effective_colors, effective_labels)
+        ]
+
     def measurement_vs_simulation(
         self,
         ax: Axes,
@@ -638,6 +684,7 @@ class DataPlot:
         measurement_x_col: str = "f",
         measurement_y_col: str = "p_total",
         measurement_range_offset: int = 0,
+        filters: dict[str, list[Any] | tuple[Any, ...] | set[Any]] | None = None,
         settings: PlotSettings | None = None,
         text_overrides: PlotTextOverrides | None = None,
         measurement_legend_title: str = "Measurements",
@@ -676,6 +723,7 @@ class DataPlot:
             x_col=x_col,
             color_col=color_col,
             style_col=style_col,
+            filters=filters,
             settings=simulation_settings,
             text_overrides=text_overrides,
         )
