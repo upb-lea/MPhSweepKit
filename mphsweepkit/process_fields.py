@@ -6,12 +6,37 @@ import numpy as np
 import pandas as pd
 
 
+def _select_z_plane(
+    df: pd.DataFrame,
+    z_select: float | None,
+    z_col: str,
+    z_tolerance: float,
+) -> pd.DataFrame:
+    """Return only rows on the requested z-plane."""
+    if z_select is None:
+        return df
+    if z_col not in df.columns:
+        raise KeyError(f"DataFrame is missing the z-coordinate column: {z_col!r}")
+    if z_tolerance < 0:
+        raise ValueError("z_tolerance must be non-negative.")
+
+    selected = df.loc[np.isclose(df[z_col], z_select, atol=z_tolerance, rtol=0)]
+    if selected.empty:
+        raise ValueError(
+            f"No data points found on {z_col}={z_select} within tolerance {z_tolerance}."
+        )
+    return selected
+
+
 def plot_field(
     df: pd.DataFrame,
     value_col: str,
     ax: plt.Axes | None = None,
     x_col: str = "x",
     y_col: str = "y",
+    z_select: float | None = None,
+    z_col: str = "z",
+    z_tolerance: float = 0.0,
     length_unit: str = "m",
     cmap: str = "viridis",
     levels: int | Sequence[float] = 30,
@@ -25,6 +50,9 @@ def plot_field(
     :param ax: Axes on which to draw. A new figure and axes are created if omitted.
     :param x_col: DataFrame column containing x coordinates.
     :param y_col: DataFrame column containing y coordinates.
+    :param z_select: z-plane to select before plotting. If None, all rows are used.
+    :param z_col: DataFrame column containing z coordinates.
+    :param z_tolerance: Absolute tolerance used when selecting z_select.
     :param length_unit: Unit for the length dimensions.
     :param cmap: Matplotlib colormap name.
     :param levels: Number of contour levels or an explicit sequence of level boundaries.
@@ -35,9 +63,10 @@ def plot_field(
     if ax is None:
         _, ax = plt.subplots()
 
-    x = df[x_col].to_numpy()
-    y = df[y_col].to_numpy()
-    fct_xy = df[value_col].to_numpy()
+    df_plot = _select_z_plane(df, z_select, z_col, z_tolerance)
+    x = df_plot[x_col].to_numpy()
+    y = df_plot[y_col].to_numpy()
+    fct_xy = df_plot[value_col].to_numpy()
 
     contour = ax.tricontourf(x, y, fct_xy, levels=levels, cmap=cmap, norm=norm)
     ax.set(xlabel=f"{x_col} [{length_unit}]", 
@@ -58,6 +87,9 @@ def plot_row_of_fields(
     figsize: tuple[int, int] = (4, 4),
     x_col: str = "x",
     y_col: str = "y",
+    z_select: float | None = None,
+    z_col: str = "z",
+    z_tolerance: float = 0.0,
     length_unit: str = "m",
     cmap: str = "viridis",
     levels: int = 50,
@@ -74,6 +106,9 @@ def plot_row_of_fields(
     :param figsize: Figure size.
     :param x_col: DataFrame column containing x coordinates.
     :param y_col: DataFrame column containing y coordinates.
+    :param z_select: z-plane to select before plotting. If None, all rows are used.
+    :param z_col: DataFrame column containing z coordinates.
+    :param z_tolerance: Absolute tolerance used when selecting z_select.
     :param length_unit: Unit for the length dimensions. To make it invisible use an empty string "".
     :param cmap: Matplotlib colormap name.
     :param levels: Number of contour levels.
@@ -81,7 +116,8 @@ def plot_row_of_fields(
 
     :returns: fig, axes, cbar
     """
-    values = df[list(list_of_col_names)].to_numpy()
+    df_plot = _select_z_plane(df, z_select, z_col, z_tolerance)
+    values = df_plot[list(list_of_col_names)].to_numpy()
     norm = Normalize(vmin=np.nanmin(values), vmax=np.nanmax(values))
     shared_levels = np.linspace(start=norm.vmin, stop=norm.vmax, num=levels)
 
@@ -106,6 +142,9 @@ def plot_row_of_fields(
             levels=shared_levels,
             norm=norm,
             colorbar=False,
+            z_select=z_select,
+            z_col=z_col,
+            z_tolerance=z_tolerance,
         )
 
         ax.set_title(label)
