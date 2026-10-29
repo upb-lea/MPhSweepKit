@@ -67,7 +67,7 @@ def load_post_processing_exprs(
 
 
 
-def read_fields_on_geometry(subfolder, description, geometry_idx, target_length_unit="m", switch_xy: bool = False) -> tuple[pd.DataFrame, str]:
+def read_fields_on_geometry(subfolder, description, geometry_idx, target_length_unit="m", switch_xy: bool = False, path2field_data: Path | None = None) -> tuple[pd.DataFrame, str]:
     """
     Read field data from a text file exported from COMSOL.
     
@@ -84,7 +84,10 @@ def read_fields_on_geometry(subfolder, description, geometry_idx, target_length_
     read_length_unit = target_length_unit
     coordinate_header = None
 
-    filename = f"field_data/{subfolder}/geometry_{geometry_idx}_{description}.txt"
+    if path2field_data is None:
+        path2field_data = Path("field_data")
+
+    filename = f"{path2field_data}/{subfolder}/geometry_{geometry_idx}_{description}.txt"
     with open(filename) as f:
         for line in f:
             if line.startswith("% Dimension:"):
